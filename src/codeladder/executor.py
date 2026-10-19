@@ -107,6 +107,39 @@ def _emit(obj):
     _real_stdout.write("\n" + _MARKER + json.dumps(obj))
     _real_stdout.flush()
 
+def _run_stdin(compiled, inputs, limits, big):
+    # Whole-program mode (AtCoder/Codeforces): fresh globals per test, stdin fed from the
+    # test input, stdout captured as the output. exit()/sys.exit() ends the program normally.
+    results = []
+    for text, limit in zip(inputs, limits):
+        out_buf = io.StringIO()
+        sys.stdin = io.TextIOWrapper(io.BytesIO(text.encode()), encoding="utf-8")
+        sys.stdout = out_buf
+        status, err, detail = "ok", None, ""
+        t0 = time.perf_counter()
+        try:
+            signal.setitimer(signal.ITIMER_REAL, limit)
+            exec(compiled, {"__name__": "__main__"})
+            signal.setitimer(signal.ITIMER_REAL, 0)
+        except _Timeout:
+            status = "timeout"
+        except SystemExit:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+        except BaseException as e:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+            status, err, detail = "exception", type(e).__name__, str(e)[:200]
+        dt = time.perf_counter() - t0
+        sys.stdout = io.StringIO()
+        if status == "ok":
+            # Whitespace is normalised as LiveCodeBench's grader ignores it (strip each line).
+            norm = "\n".join(line.strip() for line in out_buf.getvalue().strip().split("\n"))
+            results.append({"status": "ok", "out": _maybe_digest(["s", norm], big), "dt": dt})
+        elif status == "timeout":
+            results.append({"status": "timeout"})
+        else:
+            results.append({"status": "exception", "error": err, "detail": detail})
+    return results
+
 def _main():
     payload = pickle.loads(sys.stdin.buffer.read())
     code = payload["code"]
@@ -115,12 +148,16 @@ def _main():
     per_call = float(payload["per_call_timeout"])
     limits = payload.get("timeouts") or [per_call] * len(inputs)
     big = int(payload.get("big_output_bytes") or 1_000_000)
+    mode = payload.get("mode") or "function"
     try:
         compiled = compile(code, "<candidate>", "exec")
     except SyntaxError as e:
         _emit({"fatal": "syntax_error", "detail": str(e)[:300]})
         return
     signal.signal(signal.SIGALRM, _on_alarm)
+    if mode == "stdin":
+        _emit({"results": _run_stdin(compiled, inputs, limits, big)})
+        return
     ns = {"__name__": "__candidate__"}
     try:
         signal.setitimer(signal.ITIMER_REAL, per_call * 2)
@@ -133,16 +170,24 @@ def _main():
         signal.setitimer(signal.ITIMER_REAL, 0)
         _emit({"fatal": "load_error", "detail": (type(e).__name__ + ": " + str(e))[:300]})
         return
-    fn = ns.get(entry)
-    if not callable(fn):
-        _emit({"fatal": "missing_entry_point", "detail": entry})
-        return
+    if mode == "method":  # LeetCode style: a fresh Solution() per call
+        cls = ns.get("Solution")
+        if cls is None or not callable(getattr(cls, entry, None)):
+            _emit({"fatal": "missing_entry_point", "detail": "Solution." + str(entry)})
+            return
+        make_fn = lambda: getattr(cls(), entry)
+    else:
+        fn = ns.get(entry)
+        if not callable(fn):
+            _emit({"fatal": "missing_entry_point", "detail": entry})
+            return
+        make_fn = lambda: fn
     results = []
     for args, limit in zip(inputs, limits):
         try:
             signal.setitimer(signal.ITIMER_REAL, limit)
             t0 = time.perf_counter()
-            out = fn(*copy.deepcopy(args))
+            out = make_fn()(*copy.deepcopy(args))
             dt = time.perf_counter() - t0
             signal.setitimer(signal.ITIMER_REAL, 0)
             results.append({"status": "ok", "out": _maybe_digest(_canon(out), big), "dt": dt})
@@ -187,9 +232,13 @@ def run_program(
     memory_mb: int = 2048,
     total_timeout: float | None = None,
     timeouts: list[float] | None = None,
+    mode: str = "function",
 ) -> RunResult:
     """Run ``entry_point`` from ``code`` on each argument list in ``inputs``.
 
+    ``mode``: "function" calls ``entry_point(*args)``; "method" calls
+    ``Solution().entry_point(*args)`` (LeetCode); "stdin" runs the whole program with each
+    input string on stdin and returns its stdout (AtCoder/Codeforces).
     ``timeouts`` optionally gives a per-input time limit (EvalPlus style); otherwise every
     call gets ``per_call_timeout``. ``total_timeout`` caps the whole run.
     """
@@ -207,6 +256,7 @@ def run_program(
             "inputs": inputs,
             "per_call_timeout": per_call_timeout,
             "timeouts": timeouts,
+            "mode": mode,
             "big_output_bytes": 1_000_000,
         }
     )
@@ -238,6 +288,64 @@ def run_program(
     if "fatal" in obj:
         return RunResult(fatal=obj["fatal"], detail=obj.get("detail", ""))
     return RunResult(results=obj["results"])
+
+
+def canon(x: Any) -> list[Any]:
+    """Canonical form of a Python value, identical to what the sandbox returns."""
+    if x is None:
+        return ["n"]
+    if isinstance(x, bool):
+        return ["b", x]
+    if isinstance(x, int):
+        return ["i", str(x)]
+    if isinstance(x, float):
+        if math.isnan(x):
+            return ["f", "nan"]
+        if math.isinf(x):
+            return ["f", "inf" if x > 0 else "-inf"]
+        return ["f", x]
+    if isinstance(x, str):
+        return ["s", x]
+    if isinstance(x, tuple):
+        return ["t", [canon(v) for v in x]]
+    if isinstance(x, list):
+        return ["l", [canon(v) for v in x]]
+    if isinstance(x, dict):
+        items = [[canon(k), canon(v)] for k, v in x.items()]
+        return ["d", sorted(items, key=lambda kv: json.dumps(kv[0], sort_keys=True))]
+    return ["r", repr(x)[:1000]]
+
+
+def normalise_stdout(text: str) -> str:
+    """Strip every line and surrounding blank lines, as the sandbox does for stdin programs."""
+    return "\n".join(line.strip() for line in text.strip().split("\n"))
+
+
+def digest_if_big(c: list[Any], big: int = 1_000_000) -> list[Any]:
+    """Same fingerprinting the sandbox applies to outputs larger than ``big`` bytes."""
+    if len(json.dumps(c)) <= big:
+        return c
+    import hashlib
+
+    return ["H", hashlib.sha256(json.dumps(_norm_parent(c)).encode()).hexdigest()]
+
+
+def _norm_parent(c: list[Any]) -> list[Any]:
+    tag = c[0]
+    if tag in ("b", "i", "f"):
+        val = c[1]
+        if tag == "b":
+            key = format(float(val), ".10g")
+        elif tag == "i":
+            key = format(float(val), ".10g") if len(val) < 16 else val
+        else:
+            key = val if isinstance(val, str) else format(val, ".10g")
+        return ["#", key]
+    if tag in ("l", "t", "S"):
+        return [tag, [_norm_parent(x) for x in c[1]]]
+    if tag == "d":
+        return [tag, [[_norm_parent(k), _norm_parent(v)] for k, v in c[1]]]
+    return c
 
 
 _NUMERIC = {"b", "i", "f"}

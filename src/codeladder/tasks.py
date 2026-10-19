@@ -6,8 +6,10 @@ may use; hidden tests define correctness and are only used for labels/evaluation
 - ``toy``: three tiny built-in tasks for smoke tests (no downloads).
 - ``humaneval`` / ``mbpp``: HumanEval+ and MBPP+ from EvalPlus. Base inputs are
   visible, plus inputs are hidden. Requires ``pip install evalplus``.
-- ``livecodebench``: TODO (see docs/PLAN.md). Needs a stdin-style runner for
-  AtCoder/Codeforces problems in addition to the function-call runner.
+- ``livecodebench``: LiveCodeBench release_v6, preprocessed by
+  ``scripts/prepare_lcb.py`` into ``data/lcb/``. LeetCode problems run in "method"
+  mode (``Solution().f(*args)``), AtCoder/Codeforces problems in "stdin" mode. Public
+  tests are visible, private tests hidden. Tests are loaded lazily by ``prepare_task``.
 
 Note: a few EvalPlus tasks use custom output checkers (for example HumanEval/32);
 our generic comparison may disagree with the official evaluator on those. Final
@@ -16,10 +18,13 @@ numbers should be cross-checked with ``evalplus.evaluate`` on accepted outputs.
 
 from __future__ import annotations
 
+import gzip
+import json
 import time
+from pathlib import Path
 from typing import Any
 
-from .executor import run_program
+from .executor import canon, digest_if_big, normalise_stdout, run_program
 from .oracles import oracle_for
 from .types import Task
 
@@ -120,10 +125,67 @@ def load_mbpp_plus() -> list[Task]:
     return _from_evalplus(get_mbpp_plus(), "mbpp")
 
 
-def load_livecodebench() -> list[Task]:
-    raise NotImplementedError(
-        "LiveCodeBench adapter not written yet: see docs/PLAN.md (week 3, stdin runner)."
+LCB_DIR = Path(__file__).resolve().parents[2] / "data" / "lcb"
+LCB_TIME_LIMIT_S = 6.0  # LiveCodeBench's default per-test timeout
+
+
+def lcb_prompt(question: str, starter_code: str, mode: str) -> str:
+    if mode == "stdin":
+        return (
+            f"{question.strip()}\n\n"
+            "Write a complete Python program that reads the input from standard input and "
+            "writes the answer to standard output."
+        )
+    return (
+        f"{question.strip()}\n\n"
+        "Complete the following class. Keep the class name and method signature.\n\n"
+        f"{starter_code.strip()}\n"
     )
+
+
+def load_livecodebench(root: Path | str = LCB_DIR) -> list[Task]:
+    index_path = Path(root) / "index.json"
+    if not index_path.exists():
+        raise FileNotFoundError(f"{index_path} missing: run scripts/prepare_lcb.py first")
+    tasks = []
+    for m in json.loads(index_path.read_text()):
+        tasks.append(
+            Task(
+                task_id=m["task_id"],
+                benchmark="livecodebench",
+                prompt=lcb_prompt(m["question"], m["starter_code"], m["mode"]),
+                entry_point=m["entry_point"],
+                reference="",
+                visible_inputs=[],
+                hidden_inputs=[],
+                release_date=m["release_date"],
+                oracle="lcb_stdin" if m["mode"] == "stdin" else "lcb_func",
+                mode=m["mode"],
+                time_limit_s=LCB_TIME_LIMIT_S,
+                difficulty=m.get("difficulty"),
+                source_path=str(Path(root) / "tasks" / f"{m['file']}"),
+            )
+        )
+    return tasks
+
+
+def _lcb_split(tests: list[dict[str, str]], mode: str) -> tuple[list[Any], list[Any]]:
+    inputs, expected = [], []
+    for t in tests:
+        if mode == "stdin":
+            inputs.append(t["input"])
+            expected.append(digest_if_big(["s", normalise_stdout(t["output"])]))
+        else:
+            inputs.append([json.loads(line) for line in t["input"].split("\n")])
+            expected.append(digest_if_big(canon(json.loads(t["output"]))))
+    return inputs, expected
+
+
+def prepare_livecodebench(task: Task) -> Task:
+    data = json.loads(gzip.decompress(Path(task.source_path).read_bytes()))
+    task.visible_inputs, task.visible_expected = _lcb_split(data["public"], task.mode)
+    task.hidden_inputs, task.hidden_expected = _lcb_split(data["private"], task.mode)
+    return task
 
 
 LOADERS = {
@@ -171,3 +233,13 @@ def attach_expected_outputs(
         setattr(task, f"{split}_expected", expected)
         setattr(task, f"{split}_ref_times", times)
     return task
+
+
+def prepare_task(task: Task) -> Task:
+    """Load tests and expected outputs (idempotent): LiveCodeBench from disk, others by
+    running the reference solution."""
+    if task.visible_expected is not None:
+        return task
+    if task.benchmark == "livecodebench":
+        return prepare_livecodebench(task)
+    return attach_expected_outputs(task)

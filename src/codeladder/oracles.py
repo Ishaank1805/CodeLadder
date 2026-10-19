@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import math
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from .executor import outputs_match
@@ -72,10 +73,50 @@ def _items_as_set(c: list[Any]) -> set[str] | None:
     return None
 
 
+def _tuples_as_lists(c: list[Any]) -> list[Any]:
+    tag = c[0]
+    if tag in ("t", "l"):
+        return ["l", [_tuples_as_lists(x) for x in c[1]]]
+    if tag == "d":
+        return ["d", [[_tuples_as_lists(k), _tuples_as_lists(v)] for k, v in c[1]]]
+    return c
+
+
+def _stripped_lines(text: str) -> list[str]:
+    return [line.strip() for line in text.strip().split("\n")]
+
+
+def _as_decimals(line: str) -> list[Decimal] | None:
+    try:
+        return [Decimal(tok) for tok in line.split()]
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def lcb_stdin_match(got: str, exp: str) -> bool:
+    """LiveCodeBench stdin grading: stripped lines must match, or match as exact decimals."""
+    a, b = _stripped_lines(got), _stripped_lines(exp)
+    if len(a) != len(b):
+        return False
+    for x, y in zip(a, b, strict=True):
+        if x == y:
+            continue
+        dx, dy = _as_decimals(x), _as_decimals(y)
+        if dx is None or dy is None or dx != dy:
+            return False
+    return True
+
+
 def check(oracle: str | None, args: list[Any], out: list[Any], exp: list[Any], atol: float) -> bool:
     """True if canonical output ``out`` is acceptable for inputs ``args``."""
     if oracle is None:
         return outputs_match(out, exp, atol)
+    if oracle == "lcb_stdin":
+        if out[0] == "H" or exp[0] == "H":
+            return out == exp
+        return out[0] == "s" and lcb_stdin_match(out[1], exp[1])
+    if oracle == "lcb_func":  # LiveCodeBench compares tuples as lists
+        return outputs_match(_tuples_as_lists(out), _tuples_as_lists(exp), atol)
     exact = outputs_match(out, exp, atol)
     try:
         if oracle == "always":
