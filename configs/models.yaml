@@ -1,0 +1,52 @@
+# Model ladder, cheapest first.
+#
+# Each tier is an OpenAI-compatible endpoint. For local tiers the serve scripts in
+# scripts/ada/ write "host:port" into endpoint_file once the server is up, so the
+# harness can find a server that SLURM placed on any node.
+#
+# params_b is used for the weighted-token cost metric (cost = tokens_out * params_b).
+# Model choices are provisional until the week-1 throughput test on Ada.
+
+tiers:
+  - name: t1
+    model: Qwen/Qwen2.5-Coder-1.5B-Instruct
+    endpoint_file: ~/codeladder_endpoints/t1
+    params_b: 1.5
+    max_concurrency: 32
+    enabled: true
+
+  - name: t2
+    model: Qwen/Qwen2.5-Coder-7B-Instruct-AWQ
+    endpoint_file: ~/codeladder_endpoints/t2
+    params_b: 7
+    max_concurrency: 32
+    enabled: true
+
+  - name: t3
+    model: Qwen/Qwen2.5-Coder-14B-Instruct-AWQ
+    endpoint_file: ~/codeladder_endpoints/t3
+    params_b: 14
+    max_concurrency: 16
+    enabled: true
+
+  - name: t4
+    model: Qwen/Qwen2.5-Coder-32B-Instruct-AWQ
+    endpoint_file: ~/codeladder_endpoints/t4
+    params_b: 32
+    max_concurrency: 8
+    enabled: true
+
+  # Optional free API top rung. Disabled by default; free tiers change often, so set
+  # the model name after checking the provider's current free models.
+  # Groq:      base_url https://api.groq.com/openai/v1                        key GROQ_API_KEY
+  # Gemini:    base_url https://generativelanguage.googleapis.com/v1beta/openai/  key GEMINI_API_KEY
+  # Cerebras:  base_url https://api.cerebras.ai/v1                            key CEREBRAS_API_KEY
+  # OpenRouter base_url https://openrouter.ai/api/v1                          key OPENROUTER_API_KEY
+  - name: api
+    model: SET-ME
+    base_url: https://api.groq.com/openai/v1
+    api_key_env: GROQ_API_KEY
+    params_b: 70
+    max_concurrency: 2
+    requests_per_minute: 25
+    enabled: false
