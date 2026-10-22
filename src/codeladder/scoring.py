@@ -81,32 +81,58 @@ def behaviour_signature(run: RunResult) -> str:
     return json.dumps(parts, sort_keys=True)
 
 
-SCORES = ("agreement", "logprob", "selfconf", "visible")
+SCORES = ("agreement", "logprob", "selfconf", "agreement_selfconf", "visible")
+
+
+def checks_ok(c: Candidate) -> bool:
+    """Passes the visible tests and, where the task has model-written stress inputs, finishes
+    on all of them within the time limit (a stress timeout counts as a failed check: 80 to 90%
+    of such candidates are hidden-wrong, RESULTS.md 19 Oct)."""
+    return c.passes_visible and '"timeout"' not in c.extra.get("stress_sig", "")
+
+
+def agreement_key(c: Candidate) -> str:
+    """Behaviour used for agreement clusters: outputs on the stress inputs for stdin tasks that
+    have them, nothing for other stdin tasks (mutated stdin probes split correct programs), and
+    outputs on the argument probes otherwise."""
+    if "stress_sig" in c.extra:
+        return c.extra["stress_sig"]
+    if str(c.extra.get("probes", "")).startswith("stdin"):
+        return ""
+    return c.signature
 
 
 def phi_scores(cands: list[Candidate], score: str = "agreement") -> list[float]:
-    """Confidence for every candidate drawn so far at one tier. Candidates that fail a visible
-    test always score 0.
+    """Confidence for every candidate drawn so far at one tier. Candidates that fail a check
+    (``checks_ok``) always score 0.
 
-    - agreement: share of drawn candidates that pass the visible tests and behave identically
-      on the probe inputs (CodeT / MBR-exec style).
+    - agreement: share of drawn candidates that pass the checks and behave identically
+      (``agreement_key``; CodeT / MBR-exec style).
     - logprob: the model's own confidence, exp(mean token log-probability).
     - selfconf: the model's verbalised confidence (0 to 1) when asked about the candidate.
+    - agreement_selfconf: product of the two.
     - visible: 1 for any candidate passing the visible tests (no further evidence).
     """
     if not cands:
         return []
     if score == "agreement":
-        clusters = Counter(c.signature for c in cands if c.passes_visible)
+        ok = [checks_ok(c) for c in cands]
+        key = [agreement_key(c) for c in cands]
+        clusters = Counter(k for k, o in zip(key, ok, strict=True) if o)
         n = len(cands)
-        return [clusters[c.signature] / n if c.passes_visible else 0.0 for c in cands]
+        return [clusters[k] / n if o else 0.0 for k, o in zip(key, ok, strict=True)]
     if score == "logprob":
         return [
-            math.exp(c.mean_logprob) if c.passes_visible and c.mean_logprob is not None else 0.0
+            math.exp(c.mean_logprob) if checks_ok(c) and c.mean_logprob is not None else 0.0
             for c in cands
         ]
+    if score == "agreement_selfconf":
+        # Behavioural agreement times the model's own rating: both must be high to accept.
+        agree = phi_scores(cands, "agreement")
+        conf = phi_scores(cands, "selfconf")
+        return [a * c for a, c in zip(agree, conf, strict=True)]
     if score == "selfconf":
-        return [float(c.extra.get("self_conf") or 0.0) if c.passes_visible else 0.0 for c in cands]
+        return [float(c.extra.get("self_conf") or 0.0) if checks_ok(c) else 0.0 for c in cands]
     if score == "visible":
-        return [1.0 if c.passes_visible else 0.0 for c in cands]
+        return [1.0 if checks_ok(c) else 0.0 for c in cands]
     raise ValueError(f"unknown score {score!r}; choose from {SCORES}")
