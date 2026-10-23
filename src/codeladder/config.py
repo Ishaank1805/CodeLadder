@@ -21,8 +21,9 @@ class TierConfig:
     enabled: bool = True
     endpoint_file: str | None = None
     base_url: str | None = None
-    api_key_env: str | None = None
-    requests_per_minute: float | None = None
+    api_key_env: str | None = None  # a variable name, or a prefix ending in "*" for a key pool
+    requests_per_minute: float | None = None  # per key
+    extra_params: dict[str, Any] | None = None  # sent with every request (e.g. reasoning_effort)
 
     def resolve_base_url(self) -> str:
         """Return the OpenAI-compatible base URL for this tier."""
@@ -40,14 +41,35 @@ class TierConfig:
         raise ValueError(f"tier {self.name}: set base_url or endpoint_file")
 
     def api_key(self) -> str:
-        if self.api_key_env:
-            key = os.environ.get(self.api_key_env)
-            if not key:
-                raise RuntimeError(
-                    f"tier {self.name}: environment variable {self.api_key_env} is not set"
-                )
-            return key
-        return "EMPTY"  # local vLLM / llama.cpp servers accept any key
+        return self.api_keys()[0]
+
+    def api_keys(self) -> list[str]:
+        """Keys from the environment, else from ~/.codeladder_keys (KEY=VALUE lines, mode 600,
+        never in the repository). A name ending in "*" collects every matching variable."""
+        if not self.api_key_env:
+            return ["EMPTY"]  # local vLLM / llama.cpp servers accept any key
+        env = dict(_key_file()) | dict(os.environ)
+        if self.api_key_env.endswith("*"):
+            prefix = self.api_key_env[:-1]
+            keys = [env[k] for k in sorted(env) if k.startswith(prefix) and env[k]]
+        else:
+            keys = [env[self.api_key_env]] if env.get(self.api_key_env) else []
+        if not keys:
+            raise RuntimeError(f"tier {self.name}: no key found for {self.api_key_env}")
+        return keys
+
+
+def _key_file(path: str = "~/.codeladder_keys") -> list[tuple[str, str]]:
+    p = Path(os.path.expanduser(path))
+    if not p.exists():
+        return []
+    out = []
+    for line in p.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, v = line.split("=", 1)
+            out.append((k.strip(), v.strip().strip("'\"")))
+    return out
 
 
 def load_yaml(path: str | Path) -> dict[str, Any]:

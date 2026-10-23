@@ -28,6 +28,9 @@ class Completion:
     mean_logprob: float | None = None
     started_at: float = 0.0
     cached: bool = False
+    # Per generated token: [logprob, entropy over the top-k alternatives, top-1 minus top-2
+    # logprob]; only when requested with top_logprobs (Bayesian self-escalation baseline).
+    token_stats: list[list[float]] | None = None
 
 
 class ChatClient(Protocol):
@@ -65,6 +68,10 @@ class ResponseCache:
             self._db.commit()
 
 
+class QuotaExhausted(RuntimeError):
+    """Every key of a tier is rate-limited for hours (daily quota spent): resume later."""
+
+
 class _RateLimiter:
     def __init__(self, per_minute: float | None):
         self.interval = 60.0 / per_minute if per_minute else 0.0
@@ -82,6 +89,23 @@ class _RateLimiter:
             time.sleep(delay)
 
 
+def _token_stats(tok: Any) -> list[float]:
+    """[logprob, entropy of the renormalised top-k distribution, top-1 minus top-2 logprob]."""
+    import math
+
+    lps = sorted(
+        (a.logprob for a in (tok.top_logprobs or []) if a.logprob is not None), reverse=True
+    )
+    if not lps:
+        lps = [tok.logprob or 0.0]
+    m = max(lps)
+    ps = [math.exp(x - m) for x in lps]
+    z = sum(ps)
+    ent = -sum(p / z * math.log(p / z) for p in ps if p > 0)
+    margin = lps[0] - lps[1] if len(lps) > 1 else 10.0
+    return [round(tok.logprob or 0.0, 4), round(ent, 4), round(margin, 4)]
+
+
 class OpenAIChatClient:
     """Chat client for one tier (local vLLM/llama.cpp server or a free API)."""
 
@@ -91,47 +115,96 @@ class OpenAIChatClient:
         self.tier = tier
         self.cache = cache
         self.retries = retries
-        self._client = OpenAI(base_url=tier.resolve_base_url(), api_key=tier.api_key(), timeout=600)
-        self._limiter = _RateLimiter(tier.requests_per_minute)
+        url = tier.resolve_base_url()
+        # One client and rate limiter per key; a key that hits a limit rests until the server
+        # says it may retry, and requests move on to the next key.
+        self._clients = [OpenAI(base_url=url, api_key=k, timeout=600) for k in tier.api_keys()]
+        self._limiters = [_RateLimiter(tier.requests_per_minute) for _ in self._clients]
+        self._rest_until = [0.0] * len(self._clients)
+        self._next_key = 0
+        self._key_lock = threading.Lock()
 
-    def complete(self, messages, *, temperature, top_p, max_tokens, seed) -> Completion:
+    def _pick_key(self, max_wait_s: float = 3 * 3600) -> int:
+        """Next key that is not resting (round robin); waits for the earliest one if all are."""
+        while True:
+            with self._key_lock:
+                now = time.time()
+                n = len(self._clients)
+                for d in range(n):
+                    i = (self._next_key + d) % n
+                    if self._rest_until[i] <= now:
+                        self._next_key = (i + 1) % n
+                        return i
+                wait = min(self._rest_until) - now
+            if wait > max_wait_s:
+                raise QuotaExhausted(
+                    f"tier {self.tier.name}: every key is rate-limited for {wait / 3600:.1f} h"
+                )
+            time.sleep(min(wait, 60))
+
+    def _rest(self, i: int, err: Exception) -> None:
+        resp = getattr(err, "response", None)
+        headers = getattr(resp, "headers", None) or {}
+        try:
+            secs = float(headers.get("retry-after") or 30)
+        except ValueError:
+            secs = 30.0
+        with self._key_lock:
+            self._rest_until[i] = time.time() + secs + 1
+
+    def complete(
+        self, messages, *, temperature, top_p, max_tokens, seed, top_logprobs: int = 0
+    ) -> Completion:
         params = {
             "temperature": temperature,
             "top_p": top_p,
             "max_tokens": max_tokens,
             "seed": seed,
         }
+        if top_logprobs:
+            params["top_logprobs"] = top_logprobs  # separate cache entries
         key = ResponseCache.key(self.tier.model, messages, params)
         if self.cache and (hit := self.cache.get(key)):
             return Completion(**{**hit, "cached": True})
         last_err: Exception | None = None
-        for attempt in range(self.retries):
-            self._limiter.wait()
+        attempt = 0
+        while attempt < self.retries:
+            k = self._pick_key()
+            self._limiters[k].wait()
             started = time.time()
             # Local servers support seeds and logprobs; free APIs vary, so we only send the
             # basic parameters to them. The cache key still includes the seed, so
             # repeated samples stay distinct.
             local = self.tier.api_key_env is None
             extra = {"seed": seed, "logprobs": True} if local else {}
+            if local and top_logprobs:
+                extra["top_logprobs"] = top_logprobs
             try:
-                resp = self._client.chat.completions.create(
+                resp = self._clients[k].chat.completions.create(
                     model=self.tier.model,
                     messages=messages,
                     temperature=temperature,
                     top_p=top_p,
                     max_tokens=max_tokens,
+                    extra_body=self.tier.extra_params or None,
                     **extra,
                 )
             except Exception as e:  # network errors, 429s, server restarts
                 last_err = e
+                if getattr(e, "status_code", None) == 429:
+                    self._rest(k, e)  # rate limit: not a failure, try another key
+                    continue
+                attempt += 1
                 time.sleep(min(60, 2**attempt))
                 continue
             choice = resp.choices[0]
-            mean_lp = None
+            mean_lp, stats = None, None
             lp = getattr(choice, "logprobs", None)
             if lp is not None and getattr(lp, "content", None):
                 vals = [t.logprob for t in lp.content if t.logprob is not None]
                 mean_lp = sum(vals) / len(vals) if vals else None
+                if top_logprobs:
+                    stats = [_token_stats(t) for t in lp.content]
             usage = resp.usage
             comp = Completion(
                 text=choice.message.content or "",
@@ -140,6 +213,7 @@ class OpenAIChatClient:
                 latency_s=time.time() - started,
                 mean_logprob=mean_lp,
                 started_at=started,
+                token_stats=stats,
             )
             if self.cache:
                 self.cache.put(key, {k: v for k, v in comp.__dict__.items() if k != "cached"})
