@@ -1,0 +1,7 @@
+# Build tools for the BigCodeBench packages that only exist as source for Python 3.10
+# (scikit-image 0.18.0, python-Levenshtein-wheels). scikit-image's own build pins
+# setuptools<=51 and lists no numpy for 3.10, so it is built without isolation against these.
+Cython==0.29.36
+setuptools==59.8.0
+wheel
+numpy==1.21.2
