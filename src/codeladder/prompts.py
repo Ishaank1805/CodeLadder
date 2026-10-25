@@ -53,6 +53,12 @@ def _args(args: list[str]) -> str:
 
 
 def feedback_text(task: Task, feedback: dict[str, Any] | None) -> str:
+    # Clipped so a huge failing input cannot overflow the context window (8k tokens for the
+    # local tiers); below the limit the text is unchanged.
+    return _clip(_feedback_text(task, feedback), 8000)
+
+
+def _feedback_text(task: Task, feedback: dict[str, Any] | None) -> str:
     if not feedback:
         return "The previous solution may be incorrect."
     kind = feedback.get("kind")
@@ -122,9 +128,15 @@ def extract_code(text: str, task: Task) -> str:
     return code + "\n"
 
 
-def confidence_messages(task: Task, code: str) -> list[dict[str, str]]:
-    """Ask the model how likely a candidate is to be fully correct (verbalised confidence)."""
-    return initial_messages(task) + [
+CONF_PREFILL = "Confidence (0-100): "
+
+
+def confidence_messages(task: Task, code: str, prefill: bool = False) -> list[dict[str, str]]:
+    """Ask the model how likely a candidate is to be fully correct (verbalised confidence).
+    With ``prefill`` the answer is started for the model ("Confidence (0-100): "), for models
+    that otherwise decline to give a number (DeepSeek-Coder: "as an AI, I cannot execute
+    code"); the server must continue that assistant message (see ``continue_final``)."""
+    msgs = initial_messages(task) + [
         {"role": "assistant", "content": f"```python\n{code.rstrip()}\n```"},
         {
             "role": "user",
@@ -134,13 +146,67 @@ def confidence_messages(task: Task, code: str) -> list[dict[str, str]]:
             ),
         },
     ]
+    if prefill:
+        msgs.append({"role": "assistant", "content": CONF_PREFILL})
+    return msgs
 
 
 _NUMBER = re.compile(r"\d{1,3}")
 
 
-def parse_confidence(text: str) -> float | None:
-    m = _NUMBER.search(text or "")
-    if not m:
+_MARKED = re.compile(r"(\d{1,3})\s*(?:%|/\s*100|percent)", re.IGNORECASE)
+_NAMED = re.compile(r"confiden\w*\D{0,40}?(\d{1,3})", re.IGNORECASE)
+
+
+_LEADING = re.compile(r"\s*(\d{1,3})(?!\d)")
+
+
+def parse_confidence(text: str, prefilled: bool = False) -> float | None:
+    """A 0 to 100 rating from the reply. A bare number (what most models answer) is read as
+    is; in a sentence, a number marked as a percentage or named as the confidence wins over
+    other numbers (e.g. "Python 3"); otherwise the last number from 0 to 100. A reply that
+    continues the prefilled "Confidence (0-100): " must start with the number."""
+    if prefilled:
+        m = _LEADING.match(text or "")
+        return min(int(m.group(1)), 100) / 100.0 if m else None
+    text = (text or "").strip()
+    if text.isdigit():
+        return min(int(text), 100) / 100.0
+    for pat in (_MARKED, _NAMED):
+        m = pat.search(text)
+        if m and int(m.group(1)) <= 100:
+            return int(m.group(1)) / 100.0
+    nums = [int(x) for x in _NUMBER.findall(text) if int(x) <= 100]
+    return nums[-1] / 100.0 if nums else None
+
+
+PTRUE_PREFILL = "Answer:"
+
+
+def ptrue_messages(task: Task, code: str) -> list[dict[str, str]]:
+    """P(True) self-evaluation (Kadavath et al., 2022): ask whether the candidate is correct
+    and read the probability of "Yes" against "No" from the first answer token. The answer is
+    started for the model ("Answer:"), so the next token is the verdict for every model."""
+    return initial_messages(task) + [
+        {"role": "assistant", "content": f"```python\n{code.rstrip()}\n```"},
+        {
+            "role": "user",
+            "content": (
+                "Is this solution correct on all valid inputs, including edge cases? "
+                "Answer Yes or No."
+            ),
+        },
+        {"role": "assistant", "content": PTRUE_PREFILL},
+    ]
+
+
+def p_true(first_top: dict[str, float] | None) -> float | None:
+    """P(Yes) / (P(Yes) + P(No)) from the first token's top alternatives (any case or
+    leading space); None when neither appears."""
+    import math
+
+    if not first_top:
         return None
-    return min(int(m.group()), 100) / 100.0
+    yes = sum(math.exp(lp) for t, lp in first_top.items() if t.strip().lower() == "yes")
+    no = sum(math.exp(lp) for t, lp in first_top.items() if t.strip().lower() == "no")
+    return yes / (yes + no) if yes + no > 0 else None
