@@ -1,0 +1,10 @@
+#!/bin/sh
+# BigCodeBench sandbox: kill only processes in the test's own session (BCB_SID).
+opts=""
+for a in "$@"; do
+  case "$a" in
+    -*) opts="$opts $a" ;;
+    *) sid=$(ps -o sid= -p "$a" 2>/dev/null | tr -d ' ')
+       if [ "$sid" = "${BCB_SID:?}" ]; then /bin/kill $opts "$a"; else echo "kill: ($a) - Operation not permitted" >&2; exit 1; fi ;;
+  esac
+done

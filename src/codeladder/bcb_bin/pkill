@@ -1,0 +1,4 @@
+#!/bin/sh
+# BigCodeBench sandbox: pkill limited to the test's own session (BCB_SID), so generated code
+# cannot stop the model server or other processes of the same user on the node.
+exec /usr/bin/pkill -s "${BCB_SID:?}" "$@"

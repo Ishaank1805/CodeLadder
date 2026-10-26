@@ -149,6 +149,8 @@ def load_livecodebench(root: Path | str = LCB_DIR) -> list[Task]:
         raise FileNotFoundError(f"{index_path} missing: run scripts/prepare_lcb.py first")
     tasks = []
     for m in json.loads(index_path.read_text()):
+        if not m.get("n_public"):
+            continue  # no visible tests (e.g. abc350_c): nothing for the controller to check
         tasks.append(
             Task(
                 task_id=m["task_id"],
@@ -188,11 +190,18 @@ def prepare_livecodebench(task: Task) -> Task:
     return task
 
 
+def load_bigcodebench_tasks() -> list[Task]:
+    from .bcb import load_bigcodebench
+
+    return load_bigcodebench()
+
+
 LOADERS = {
     "toy": load_toy,
     "humaneval": load_humaneval_plus,
     "mbpp": load_mbpp_plus,
     "livecodebench": load_livecodebench,
+    "bigcodebench": load_bigcodebench_tasks,
 }
 
 
@@ -233,6 +242,16 @@ def attach_expected_outputs(
         setattr(task, f"{split}_expected", expected)
         setattr(task, f"{split}_ref_times", times)
     return task
+
+
+def release_tests(task: Task) -> None:
+    """Free a prepared LiveCodeBench task's tests (they can be large); the task counts as
+    unprepared again, so a later ``prepare_task`` reloads them from disk. Other benchmarks
+    keep their tests: their inputs come from the loader and are small."""
+    if task.benchmark != "livecodebench":
+        return
+    task.hidden_inputs, task.hidden_expected = [], None
+    task.visible_inputs, task.visible_expected = [], None
 
 
 def prepare_task(task: Task) -> Task:
