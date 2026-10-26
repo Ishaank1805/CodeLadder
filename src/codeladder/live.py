@@ -55,6 +55,10 @@ def export_policy(run_dir: str | Path, cfg: dict[str, Any], alpha: float) -> dic
         lower = int(m.group(1))  # runs written before the summary recorded it
     ctl = {**cfg["controller"], "score": s.get("score", "agreement"), "lower_budget": lower}
     ctl["action"] = s.get("action", ctl["action"])
+    if ctl["action"] == "adaptive":  # its learned action table is not stored with the policy
+        raise ValueError(f"{run.name}: exporting adaptive-action runs is not supported")
+    if s.get("calibration_method") == "pareto":  # export recertifies with paths / fixed sequence
+        raise ValueError(f"{run.name}: exporting Pareto Testing runs is not supported")
     ev = {**cfg["evaluation"], "abstain_factor": s.get("abstain_factor", 0.0)}
     fam = family if len(tiers) > 1 else "shared"
     configs, policies, method, paths = family_policies(fam, tiers, ctl, ev, {})
@@ -99,6 +103,11 @@ def export_policy(run_dir: str | Path, cfg: dict[str, Any], alpha: float) -> dic
 
 def load_policy(path: str | Path) -> tuple[Policy, dict[str, Any]]:
     meta = json.loads(Path(path).read_text())
+    return policy_from_meta(meta), meta
+
+
+def policy_from_meta(meta: dict[str, Any]) -> Policy:
+    """The controller policy of an exported policy (``export_policy`` output)."""
     pol = Policy(
         meta["thresholds"],
         meta["n_init"],
@@ -109,10 +118,29 @@ def load_policy(path: str | Path) -> tuple[Policy, dict[str, Any]]:
         name=meta.get("setting", ""),
     )
     pol.lower_budget = meta.get("lower_budget")
-    return pol, meta
+    return pol
 
 
 # ---------------------------------------------------------------- online controller
+
+
+def custom_task(path: str | Path) -> Task:
+    """A function problem from JSON: {"prompt", "entry_point", "tests": [{"input": [args],
+    "output": value}]}. The tests are the visible tests; there are no hidden tests."""
+    from .executor import canon
+
+    d = json.loads(Path(path).read_text())
+    return Task(
+        task_id=f"custom/{Path(path).stem}",
+        benchmark="custom",
+        prompt=d["prompt"],
+        entry_point=d["entry_point"],
+        reference="",
+        visible_inputs=[t["input"] for t in d["tests"]],
+        hidden_inputs=[],
+        visible_expected=[canon(t["output"]) for t in d["tests"]],
+        hidden_expected=[],
+    )
 
 
 def generation_settings(cfg: dict[str, Any], benchmark: str, tier: str) -> dict[str, Any]:
@@ -151,9 +179,12 @@ def solve(
     clients: dict[str, Any],
     cfg: dict[str, Any],
     log: Log = print,
+    on_event=None,
 ) -> dict[str, Any]:
     """Run the policy online on one prepared task. Returns the accepted code (or None), the
-    tier that answered, every candidate drawn and the decision trace."""
+    tier that answered, every candidate drawn and the decision trace. ``on_event`` receives
+    the same step dicts as ``controller.run_task`` (for the demo)."""
+    emit = on_event or (lambda e: None)
     probes = task_probes(task, cfg["probes"])
     stress: list[str] = []
     if task.mode == "stdin" and cfg["paths"].get("stress"):
@@ -177,7 +208,7 @@ def solve(
         base = int(gen.get("seed", 0)) * 100_003
         drawn: list[Candidate] = []
         next_idx = 0
-        repairs: dict[int, list[Candidate]] = {}
+        repaired: set[tuple[int, int]] = set()  # (sample, depth) already repaired once
 
         def sample() -> Candidate:
             nonlocal next_idx
@@ -187,8 +218,10 @@ def solve(
             return c
 
         log(f"[{tier}] threshold {lam:g}, up to {max_draws} draws")
+        emit({"type": "tier", "tier": t, "threshold": lam, "max_draws": max_draws})
         for _ in range(n_init):
             drawn.append(sample())
+            emit({"type": "draw", "tier": t, "cand": drawn[-1]})
         while True:
             for c in drawn:
                 if checks_ok(c):
@@ -196,6 +229,7 @@ def solve(
             scores = phi_scores(drawn, policy.score)
             i = max(range(len(drawn)), key=lambda k: (scores[k], -k))  # noqa: B023
             best = drawn[i]
+            emit({"type": "scores", "tier": t, "scores": scores, "best": i, "threshold": lam})
             log(
                 f"[{tier}] {len(drawn)} drawn, {sum(map(checks_ok, drawn))} pass the checks;"
                 f" best score {scores[i]:.2f}"
@@ -205,13 +239,16 @@ def solve(
                     {"tier": tier, "step": "accept", "score": scores[i], "drawn": len(drawn)}
                 )
                 log(f"[{tier}] accept (score {scores[i]:.2f} >= {lam:g})")
+                emit({"type": "accept", "tier": t, "cand": best, "score": scores[i]})
                 return {"accepted": best, "tier": tier, "drawn": all_drawn + drawn, "trace": trace}
             if len(drawn) >= max_draws:
                 break
             action = _choose_action(policy, t, drawn)
             nxt = None
             if action == "repair":
-                failing = [c for c in drawn if not c.passes_visible]
+                # as the offline controller: each failing candidate is repaired at most once
+                failing = [c for c in drawn if not c.passes_visible
+                           and (c.sample_idx, c.depth) not in repaired]  # fmt: skip
                 target = (
                     max(failing, key=lambda c: (c.visible_pass_rate, c.depth)) if failing else None
                 )
@@ -223,23 +260,29 @@ def solve(
                     )  # fmt: skip
                     nxt = make_candidate(task, tier, "repair", target.sample_idx, d, comp,
                                          probes, stress, exec_cfg)  # fmt: skip
-                    repairs.setdefault(target.sample_idx, []).append(nxt)
+                    repaired.add((target.sample_idx, target.depth))
             if nxt is None:
                 action, nxt = "resample", sample()
             trace.append({"tier": tier, "step": action, "score": scores[i], "drawn": len(drawn)})
             log(f"[{tier}] {action}")
+            emit({"type": action, "tier": t})
+            emit({"type": "draw", "tier": t, "cand": nxt})
             drawn.append(nxt)
         trace.append({"tier": tier, "step": "escalate", "drawn": len(drawn)})
         log(f"[{tier}] escalate")
+        emit({"type": "escalate", "tier": t})
         all_drawn.extend(drawn)
     trace.append({"step": "abstain"})
     log("abstain: no candidate certified at this risk level")
+    emit({"type": "abstain"})
     return {"accepted": None, "tier": None, "drawn": all_drawn, "trace": trace}
 
 
-def replay(pools: list[TierPool], policy: Policy, perm_seed: int = 0) -> dict[str, Any]:
+def replay(
+    pools: list[TierPool], policy: Policy, perm_seed: int = 0, on_event=None
+) -> dict[str, Any]:
     """The same decisions from cached pools (no model calls)."""
-    o = run_task(pools, policy, perm_seed)
+    o = run_task(pools, policy, perm_seed, on_event=on_event)
     names = [p.tier for p in pools]
     trace = [
         {"tier": names[t], "step": step, "score": round(score, 3)} for t, step, score in o.trace

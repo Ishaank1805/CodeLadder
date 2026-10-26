@@ -1,51 +1,36 @@
 #!/bin/bash
-# Day-one environment check. Run it twice:
-#   1) on the login node:   bash scripts/ada/check_env.sh
-#   2) on a GPU node:       srun -A research --qos=medium -p long --gres=gpu:1 -c 10 \
-#                                --exclude=gnode[01-40] --time=00:20:00 bash scripts/ada/check_env.sh
-# Paste the output into docs/ada_env.md so the team knows which serving stack to use.
+# Environment check. Run on the login node, then on a GPU node:
+#   bash scripts/ada/check_env.sh
+#   srun -A research --qos=medium -p u22 --constraint=2080ti --gres=gpu:1 -c 4 --mem=8G \
+#        --time=00:15:00 bash scripts/ada/check_env.sh
 
 set -u
 source "$(dirname "$0")/common.sh"
-
 hr() { printf '\n==== %s ====\n' "$1"; }
 
 hr "host"
-hostname; date; uname -r
-hr "glibc (PyTorch wheels need >= 2.28; Ubuntu 18.04 has 2.27)"
-ldd --version | head -1
-hr "slurm account / qos"
+hostname; date; grep PRETTY_NAME /etc/os-release
+hr "glibc"
+ldd --version 2>/dev/null | head -1
+hr "slurm accounts"
 sacctmgr -n show assoc user="$USER" format=Account,QOS,DefaultQOS 2>/dev/null | head -5
 
-hr "GPUs and driver"
+hr "GPUs"
 if command -v nvidia-smi >/dev/null; then
-  nvidia-smi --query-gpu=index,name,driver_version,memory.total --format=csv
-  nvidia-smi --query-gpu=name,compute_cap --format=csv 2>/dev/null || echo "(compute_cap query unsupported: old driver)"
-  nvidia-smi | head -4 | tail -2
-  echo "vLLM 0.6.x images need a CUDA 12 driver (roughly >= 525). Older -> use llama.cpp fallback."
+  nvidia-smi --query-gpu=index,name,driver_version,memory.total,compute_cap --format=csv
 else
-  echo "no nvidia-smi here (login node?)"
+  echo "no GPU on this node"
 fi
 
-hr "modules"
-load_modules
-python3 --version
-singularity --version 2>/dev/null || echo "singularity module not loaded"
-
-hr "internet access (needed for downloads; if missing on GPU nodes, download on login node)"
+hr "internet"
 for url in https://huggingface.co https://github.com https://pypi.org; do
   if curl -sI -m 8 "$url" >/dev/null; then echo "OK   $url"; else echo "FAIL $url"; fi
 done
 
 hr "disk"
-df -h "$HOME" 2>/dev/null | tail -1
+df -h "$HOME" | tail -1
 [ -d /scratch ] && df -h /scratch | tail -1
-[ -d /share1 ] && du -sh "/share1/$USER" 2>/dev/null
-du -sh "$HOME" 2>/dev/null
 
-hr "codeladder venv"
-if [ -x "$CL_VENV/bin/python" ]; then
-  "$CL_VENV/bin/python" -c "import codeladder, numpy, scipy, openai; print('venv OK', codeladder.__version__)"
-else
-  echo "venv not found at $CL_VENV (run scripts/ada/setup_env.sh)"
-fi
+hr "environments"
+"$CL_VENV/bin/python" -c "import codeladder, evalplus; print('harness OK', codeladder.__version__)" 2>&1 | tail -1
+"$CL_VLLM_VENV/bin/python" -c "import vllm, torch; print('vllm', vllm.__version__, 'torch', torch.__version__, 'cuda available:', torch.cuda.is_available())" 2>&1 | tail -1

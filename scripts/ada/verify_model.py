@@ -39,6 +39,9 @@ def main() -> int:
     args = ap.parse_args()
     local = Path(args.local)
     ref = {k: v for k, v in hub_hashes(args.repo).items() if k.endswith(".safetensors")}
+    if not ref:  # nothing to compare against: do not report a match
+        print(f"no .safetensors files listed for {args.repo} on the Hub")
+        return 1
     bad = 0
     for name, oid in sorted(ref.items()):
         f = local / name

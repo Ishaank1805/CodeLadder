@@ -1,11 +1,11 @@
 """E4: when does repair beat resampling?
 
-For every tier and error class of the failing candidate (wrong answer, runtime error,
+For every Qwen tier (t1 to t4) and error class of the failing candidate (wrong answer, runtime error,
 timeout, broken code), compare the success rate of one repair round with the success rate
 of a fresh sample from the same tier. Success is measured on the hidden tests (true
 correctness) and on the visible tests (what the controller can see).
 
-    python scripts/analysis_repair.py --benchmarks humaneval mbpp --json results/e4_repair.json
+    python scripts/analysis_repair.py --benchmarks humaneval mbpp --json results/analysis/e4_repair.json
 """
 
 from __future__ import annotations

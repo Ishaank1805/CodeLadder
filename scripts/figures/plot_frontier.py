@@ -3,7 +3,7 @@
     python scripts/figures/plot_frontier.py results humaneval+mbpp-t1-t2-t3-t4-resample-agreement_selfconf
 
 Reads results/<prefix>-<family>-k<κ>/summary.json for the families singles, subsets and
-two_level and every κ found, and writes fig_frontier-<prefix>.{pdf,png} into results/: one panel per
+two_level and every κ found, and writes fig_frontier-<prefix>.{pdf,png} into results/figures/: one panel per
 target α, mean cost per task (log scale) against the share of tasks solved, one line per
 family through its κ points (higher κ: abstaining costs more, so more tasks are answered).
 Every point is a certified operating point.
@@ -25,6 +25,9 @@ from matplotlib.ticker import FuncFormatter, LogLocator, NullFormatter  # noqa: 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from plot_results import AQUA, BLUE, INK2, ORANGE  # noqa: E402  (shared style and palette)
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+from codeladder.results import iter_runs  # noqa: E402
+
 FAMILIES = [
     ("singles", "single model (calibrated selection)", BLUE),
     ("subsets", "sub-ladders", ORANGE),
@@ -34,7 +37,7 @@ FAMILIES = [
 
 def load(root: Path, prefix: str, family: str) -> list[tuple[float, dict]]:
     out = []
-    for d in root.glob(f"{prefix}-{family}-k*"):
+    for d in iter_runs(root, f"{prefix}-{family}-k*"):
         m = re.fullmatch(rf"{re.escape(prefix)}-{family}-k([0-9.]+)", d.name)
         if m and (d / "summary.json").exists():
             out.append((float(m.group(1)), json.loads((d / "summary.json").read_text())))
@@ -44,7 +47,12 @@ def load(root: Path, prefix: str, family: str) -> list[tuple[float, dict]]:
 def main() -> int:
     root, prefix = Path(sys.argv[1]), sys.argv[2]
     runs = {f: load(root, prefix, f) for f, _, _ in FAMILIES}
-    alphas = next([c["alpha"] for c in s["calibrated"]] for rs in runs.values() for _, s in rs[:1])
+    alphas = next(
+        ([c["alpha"] for c in s["calibrated"]] for rs in runs.values() for _, s in rs[:1]), None
+    )
+    if alphas is None:
+        print(f"no runs {prefix}-<family>-k<κ> in {root}")
+        return 1
     fig, axes = plt.subplots(1, len(alphas), figsize=(7.2, 2.6), sharey=True)
     for ax, a in zip(axes, alphas, strict=True):
         for fam, label, color in FAMILIES:
@@ -74,8 +82,9 @@ def main() -> int:
     fig.legend(handles, labels, loc="upper center", ncol=3, bbox_to_anchor=(0.5, 1.06), fontsize=8)
     fig.tight_layout()
     for ext in ("pdf", "png"):
-        fig.savefig(root / f"fig_frontier-{prefix}.{ext}")
-    print(f"wrote {root}/fig_frontier-{prefix}.pdf")
+        (root / "figures").mkdir(parents=True, exist_ok=True)
+        fig.savefig(root / "figures" / f"fig_frontier-{prefix}.{ext}")
+    print(f"wrote {root}/figures/fig_frontier-{prefix}.pdf")
     return 0
 
 

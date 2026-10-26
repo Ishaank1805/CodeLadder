@@ -138,7 +138,7 @@ def run_guaranteed(
                     ks.append(k)
                     open_ &= ~acc[k]
                 o = compose(reps, ks)
-                rows[name].append(_stats(o, test, perm, ks))
+                rows[name].append(_stats(o, test, perm))
             for t, name in enumerate(tier_names):
                 rep = full[t]
                 k = _fixed_sequence_marginal(
@@ -148,7 +148,7 @@ def run_guaranteed(
                     continue
                 ks = [None] * T
                 ks[t] = k
-                rows[f"single-{name}"].append(_stats(compose(full, ks), test, perm, ks))
+                rows[f"single-{name}"].append(_stats(compose(full, ks), test, perm))
         for name in methods:
             r = rows[name]
             if not r:
@@ -169,7 +169,7 @@ def run_guaranteed(
     return out
 
 
-def _stats(o: dict[str, np.ndarray], test: np.ndarray, perm: np.ndarray, ks) -> dict[str, float]:
+def _stats(o: dict[str, np.ndarray], test: np.ndarray, perm: np.ndarray) -> dict[str, float]:
     t = lambda a: a[test, perm[test]]  # noqa: E731
     acc, cor = t(o["accepted"]), t(o["correct"])
     return {

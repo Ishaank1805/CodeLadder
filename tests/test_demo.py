@@ -15,6 +15,7 @@ from codeladder.demo import Demo, make_bundle, make_handler
 from codeladder.evaluate import make_cost_fn, run_experiment
 from codeladder.generate import generate_pools, load_pools
 from codeladder.live import export_policy
+from codeladder.results import result_path
 
 
 def _setup(tmp_path):
@@ -76,5 +77,45 @@ def test_http_endpoints(tmp_path):
         )
         lines = [json.loads(ln) for ln in urllib.request.urlopen(req).read().decode().splitlines()]
         assert lines[0]["type"] == "start" and lines[-1]["type"] == "result"
+    finally:
+        server.shutdown()
+
+
+def test_ladder_builder_certify_and_batch(tmp_path):
+    app = _setup(tmp_path)
+    cfg = app.cfg
+    pools = load_pools(cfg["paths"]["pools"], "toy", ["t1", "t2"])
+    run = result_path(tmp_path / "results", "toy-t1-t2-resample-agreement-subsets-k64-lb1")
+    run_experiment([copy.deepcopy(p) for p in pools.values() for _ in range(10)], ["t1", "t2"], cfg,
+                   make_cost_fn("weighted_tokens", {}), run)  # fmt: skip
+    (cat,) = app.catalog()  # the run without the catalog tag is left out
+    assert cat["run"] == run.name and cat["tiers"] == ["t1", "t2"]
+    assert cat["family"] == "subsets" and cat["lean"] and cat["benchmarks"] == ["toy"]
+    meta = app.certify(run.name, 0.3)
+    assert meta["id"] == f"run:{run.name}@0.3" and len(meta["thresholds"]) == 2
+    events = []
+    app.batch({"policy": meta["id"], "n": 0, "seed": 1}, events.append)
+    tasks = [e for e in events if e["type"] == "task"]
+    assert events[0]["type"] == "loading" and events[-1]["type"] == "batch_done"
+    assert len(tasks) == 3 and all(t["cost"] >= 0 for t in tasks)
+    assert all(t["hidden_pass"] is None for t in tasks if not t["accepted"])
+    one = []
+    app.run({"policy": meta["id"], "benchmark": "toy", "task_id": tasks[0]["id"]}, one.append)
+    assert one[0]["type"] == "start" and one[-1]["type"] == "result"
+    status = app.live_status()  # no servers or keys in tests: every tier reported, none callable
+    assert set(status) >= {"t1", "t2"} and all(isinstance(v["ok"], bool) for v in status.values())
+    server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(app))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        assert json.load(urllib.request.urlopen(base + "/api/catalog"))[0]["run"] == run.name
+        ok = json.load(urllib.request.urlopen(f"{base}/api/certify?run={run.name}&alpha=0.3"))
+        assert ok["thresholds"] == meta["thresholds"]
+        bad = json.load(urllib.request.urlopen(f"{base}/api/certify?run={run.name}&alpha=0.0"))
+        assert "error" in bad  # nothing can be certified at alpha 0
+        req = urllib.request.Request(base + "/api/batch", data=json.dumps(
+            {"policy": meta["id"], "n": 2}).encode(), headers={"Content-Type": "application/json"})  # fmt: skip
+        lines = [json.loads(ln) for ln in urllib.request.urlopen(req).read().decode().splitlines()]
+        assert sum(ln["type"] == "task" for ln in lines) == 2
     finally:
         server.shutdown()

@@ -68,3 +68,39 @@ def test_export_then_solve_live_and_replay(tmp_path):
     rep = replay(pools["toy/add"], policy, 0)
     ref = run_task(pools["toy/add"], policy, 0)
     assert (rep["accepted"] is None) == (ref.accepted is None)
+
+
+def test_custom_problem_runs_and_abstains_on_wrong_code(tmp_path):
+    from codeladder.config import REPO_ROOT, load_experiment
+    from codeladder.live import custom_task
+    from codeladder.llm import Completion
+
+    task = custom_task(REPO_ROOT / "examples" / "problem.json")
+    assert task.entry_point == "second_largest" and len(task.visible_inputs) == 3
+    good = "def second_largest(numbers):\n    s = sorted(set(numbers))\n    return s[-2] if len(s) > 1 else None\n"
+    bad = "def second_largest(numbers):\n    return sorted(numbers)[-2]\n"
+
+    class Model:
+        def __init__(self, code):
+            self.code = code
+
+        def complete(self, messages, **kw):
+            if kw.get("temperature") == 0.0:  # rating request
+                return Completion("95", 10, 1, 0.0)
+            return Completion(f"```python\n{self.code}```", 100, 40, 0.0)
+
+    cfg = load_experiment()
+    policy, meta = load_policy(REPO_ROOT / "examples" / "policies" / "evalplus-ladder-a0.2.json")
+    out = solve(
+        task,
+        policy,
+        meta["tiers"],
+        {t: Model(good) for t in meta["tiers"]},
+        cfg,
+        log=lambda m: None,
+    )
+    assert out["tier"] == meta["tiers"][0] and out["accepted"].visible_pass_rate == 1.0
+    out = solve(
+        task, policy, meta["tiers"], {t: Model(bad) for t in meta["tiers"]}, cfg, log=lambda m: None
+    )
+    assert out["accepted"] is None and out["trace"][-1]["step"] == "abstain"

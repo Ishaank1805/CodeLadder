@@ -1,4 +1,5 @@
-"""Offline replay of two published baselines on the same tasks, splits and costs as CodeLadder.
+"""Offline replay of two published baselines on the same tasks and costs as CodeLadder, over the
+same number of random calibration/test halves (drawn independently of CodeLadder's halves).
 
 Model Cascading for Code (MCC, arXiv 2405.15842). Per model: k solutions (our pool samples,
 temperature 0.8 as in the reference baseline) and k self-generated test cases of up to l assert lines.
@@ -32,7 +33,7 @@ from typing import Any
 
 import numpy as np
 
-from .executor import _limits
+from .executor import _limits, run_isolated
 from .types import Task, TierPool
 
 log = logging.getLogger(__name__)
@@ -84,10 +85,10 @@ def run_asserts(
     total = timeout * (len(lines) + 1) + 5
     with tempfile.TemporaryDirectory(prefix="codeladder-mcc-") as tmp:
         try:
-            proc = subprocess.run(
+            proc = run_isolated(
                 [sys.executable, "-s", "-B", "-c", _ASSERT_RUNNER],
                 input=pickle.dumps({"code": code, "lines": lines, "timeout": timeout}),
-                capture_output=True, timeout=total, cwd=tmp, env=env,
+                timeout=total, cwd=tmp, env=env,
                 preexec_fn=_limits(memory_mb, int(total) + 1),
             )  # fmt: skip
         except subprocess.TimeoutExpired:
@@ -155,7 +156,7 @@ def label_traces(
 ) -> int:
     """Visible and hidden labels for the greedy trace programs."""
     from .generate import evaluate_code
-    from .tasks import prepare_task
+    from .tasks import prepare_task, release_tests
 
     files = sorted((Path(root) / "traces" / bench / tier).glob("*.json"))
 
@@ -164,9 +165,13 @@ def label_traces(
         if "hidden_pass" in tr:
             return 0
         task = tasks[tr["task_id"]]
-        prepare_task(task)
-        res = evaluate_code(task, tr["code"], [], exec_cfg)
-        task.hidden_inputs, task.hidden_expected = [], None
+        try:
+            prepare_task(task)
+            res = evaluate_code(task, tr["code"], [], exec_cfg)
+        except Exception:  # one task must not stop the run (rerun to retry it)
+            log.exception("could not label %s", tr["task_id"])
+            return 0
+        release_tests(task)
         tr["visible_pass"] = res["visible_pass_rate"] >= 1.0
         tr["hidden_pass"] = bool(res["hidden_pass"])
         _write(f, tr)

@@ -81,7 +81,15 @@ def behaviour_signature(run: RunResult) -> str:
     return json.dumps(parts, sort_keys=True)
 
 
-SCORES = ("agreement", "logprob", "selfconf", "agreement_selfconf", "visible")
+SCORES = (
+    "agreement",
+    "logprob",
+    "selfconf",
+    "agreement_selfconf",
+    "ptrue",
+    "agreement_ptrue",
+    "visible",
+)
 
 
 def checks_ok(c: Candidate) -> bool:
@@ -111,6 +119,8 @@ def phi_scores(cands: list[Candidate], score: str = "agreement") -> list[float]:
     - logprob: the model's own confidence, exp(mean token log-probability).
     - selfconf: the model's verbalised confidence (0 to 1) when asked about the candidate.
     - agreement_selfconf: product of the two.
+    - ptrue: the model's probability that the candidate is correct, P(Yes) / (P(Yes) + P(No))
+      for "Is this solution correct?" (X12); agreement_ptrue: agreement times it.
     - visible: 1 for any candidate passing the visible tests (no further evidence).
     """
     if not cands:
@@ -133,6 +143,12 @@ def phi_scores(cands: list[Candidate], score: str = "agreement") -> list[float]:
         return [a * c for a, c in zip(agree, conf, strict=True)]
     if score == "selfconf":
         return [float(c.extra.get("self_conf") or 0.0) if checks_ok(c) else 0.0 for c in cands]
+    if score == "ptrue":
+        return [float(c.extra.get("p_true") or 0.0) if checks_ok(c) else 0.0 for c in cands]
+    if score == "agreement_ptrue":
+        agree = phi_scores(cands, "agreement")
+        pt = phi_scores(cands, "ptrue")
+        return [a * c for a, c in zip(agree, pt, strict=True)]
     if score == "visible":
         return [1.0 if checks_ok(c) else 0.0 for c in cands]
     raise ValueError(f"unknown score {score!r}; choose from {SCORES}")

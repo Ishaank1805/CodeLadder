@@ -20,105 +20,142 @@
     --warn: #e0a83a; --warn-soft: #3a2e14; --code-bg: #141821;
   }
 }
+:root[data-theme="dark"] {
+  --bg: #12151b; --panel: #1a1e26; --ink: #e7eaf0; --ink2: #b3bac7; --muted: #7f8899;
+  --line: #2b313d; --accent: #6a9df0; --accent-soft: #1f2b40;
+  --ok: #4cc283; --ok-soft: #173025; --bad: #f07a65; --bad-soft: #3a1f1a;
+  --warn: #e0a83a; --warn-soft: #3a2e14; --code-bg: #141821;
+}
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--ink);
   font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-header { padding: 18px 24px; border-bottom: 1px solid var(--line); background: var(--panel);
+header { padding: 16px 24px; border-bottom: 1px solid var(--line); background: var(--panel);
   display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
 header h1 { margin: 0; font-size: 20px; letter-spacing: .2px; }
-header p { margin: 0; color: var(--ink2); }
-.layout { display: grid; grid-template-columns: 360px 1fr; gap: 18px; padding: 18px 24px;
+header p { margin: 0; color: var(--ink2); flex: 1; }
+header .keys { font-size: 12px; color: var(--muted); }
+kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--line); border-bottom-width: 2px;
+  border-radius: 4px; padding: 0 4px; background: var(--bg); }
+.theme { background: none; border: 1px solid var(--line); border-radius: 6px; padding: 3px 9px; cursor: pointer; color: var(--ink2); }
+.layout { display: grid; grid-template-columns: 380px 1fr; gap: 18px; padding: 18px 24px;
   max-width: 1500px; margin: 0 auto; }
 @media (max-width: 960px) { .layout { grid-template-columns: 1fr; padding: 14px 16px; } }
-.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
-  padding: 14px 16px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; }
 aside .card + .card, .stage > * + * { margin-top: 14px; }
-h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted);
-  margin: 0 0 10px; font-weight: 600; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
 select, input, textarea, button { font: inherit; color: var(--ink); }
-select, input[type=search], input[type=text], textarea { width: 100%; padding: 8px 10px;
+select, input[type=search], input[type=text], textarea { width: 100%; padding: 7px 10px;
   border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
 textarea { font-family: var(--mono); font-size: 13px; min-height: 90px; resize: vertical; }
-label { display: block; font-size: 13px; color: var(--ink2); margin: 10px 0 4px; }
+label, .lbl { display: block; font-size: 13px; color: var(--ink2); margin: 10px 0 4px; }
+.hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
 .tabs { display: flex; gap: 6px; margin-bottom: 10px; }
-.tab { flex: 1; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px;
+.tab { flex: 1; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px;
   background: var(--bg); cursor: pointer; text-align: center; color: var(--ink2); }
-.tab[aria-selected=true] { background: var(--accent-soft); color: var(--accent);
-  border-color: var(--accent); font-weight: 600; }
-.tasklist { list-style: none; margin: 8px 0 0; padding: 0; max-height: 260px; overflow: auto;
+.tab[aria-selected=true] { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); font-weight: 600; }
+.seg { display: flex; gap: 4px; flex-wrap: wrap; }
+.seg button { flex: 1 1 auto; padding: 5px 8px; border: 1px solid var(--line); border-radius: 7px;
+  background: var(--bg); cursor: pointer; color: var(--ink2); font-size: 13px; }
+.seg button[aria-pressed=true] { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); font-weight: 600; }
+.seg button:disabled { opacity: .4; cursor: default; }
+.alpha { display: flex; align-items: center; gap: 10px; }
+.alpha input { flex: 1; accent-color: var(--accent); }
+.alpha output { font-family: var(--mono); font-weight: 700; min-width: 44px; text-align: right; }
+.tasklist { list-style: none; margin: 8px 0 0; padding: 0; max-height: 220px; overflow: auto;
   border: 1px solid var(--line); border-radius: 8px; }
-.tasklist li { padding: 7px 10px; border-bottom: 1px solid var(--line); cursor: pointer;
+.tasklist li { padding: 6px 10px; border-bottom: 1px solid var(--line); cursor: pointer;
   display: flex; justify-content: space-between; gap: 8px; font-size: 14px; }
 .tasklist li:last-child { border-bottom: 0; }
 .tasklist li:hover { background: var(--accent-soft); }
 .tasklist li[aria-selected=true] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .tasklist li.noreplay { color: var(--muted); }
-.badge { font-size: 11px; padding: 2px 7px; border-radius: 999px; background: var(--code-bg);
-  color: var(--ink2); white-space: nowrap; }
+.badge { font-size: 11px; padding: 2px 7px; border-radius: 999px; background: var(--code-bg); color: var(--ink2); white-space: nowrap; }
 .badge.hard { background: var(--bad-soft); color: var(--bad); }
 .badge.medium { background: var(--warn-soft); color: var(--warn); }
 .badge.easy { background: var(--ok-soft); color: var(--ok); }
-.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.row { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
 .row > * { flex: 1; }
 .radio { display: flex; gap: 6px; }
-.radio label { margin: 0; flex: 1; border: 1px solid var(--line); border-radius: 8px; padding: 7px;
-  text-align: center; cursor: pointer; color: var(--ink2); }
+.radio label { margin: 0; flex: 1; border: 1px solid var(--line); border-radius: 8px; padding: 6px; text-align: center; cursor: pointer; color: var(--ink2); }
 .radio input { display: none; }
-.radio input:checked + span { color: var(--accent); font-weight: 600; }
-.radio label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
-button.run { width: 100%; margin-top: 12px; padding: 11px; border: 0; border-radius: 8px;
+.radio label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.radio label:has(input:disabled) { opacity: .45; cursor: not-allowed; }
+button.run { width: 100%; margin-top: 12px; padding: 10px; border: 0; border-radius: 8px;
   background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; font-size: 15px; }
+button.run.secondary { background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent); }
 button.run:disabled { opacity: .55; cursor: default; }
+button.small { padding: 5px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); cursor: pointer; color: var(--ink2); font-size: 13px; }
+button.small:disabled { opacity: .45; cursor: default; }
+.player { display: flex; gap: 6px; margin-top: 8px; }
+.player button { flex: 1; }
 .policy-meta { font-size: 13px; color: var(--ink2); margin-top: 10px; }
 .policy-meta b { color: var(--ink); }
-.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.tierchip { font-size: 12px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--line);
-  background: var(--bg); }
+.policy-meta .tested { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--line); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; align-items: center; }
+.tierchip { font-size: 12px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); }
 .tierchip.off { opacity: .45; text-decoration: line-through; }
+.arrow { color: var(--muted); font-size: 12px; }
+.live-note { font-size: 12px; color: var(--muted); margin-top: 6px; }
+.live-note .bad { color: var(--bad); }
 pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-family: var(--mono);
-  font-size: 12.5px; background: var(--code-bg); border-radius: 8px; padding: 10px 12px;
-  max-height: 260px; overflow: auto; }
+  font-size: 12.5px; background: var(--code-bg); border-radius: 8px; padding: 10px 12px; max-height: 260px; overflow: auto; }
 .problem h3 { margin: 0 0 8px; font-size: 16px; }
-.lane { display: grid; grid-template-columns: 170px 1fr; gap: 12px; padding: 10px 0;
-  border-bottom: 1px dashed var(--line); align-items: start; }
+.lane { display: grid; grid-template-columns: 170px 1fr; gap: 12px; padding: 10px 0; border-bottom: 1px dashed var(--line); align-items: start; }
 .lane:last-child { border-bottom: 0; }
 .lane.skipped { opacity: .4; }
 .lane.active .lane-name { color: var(--accent); }
 .lane-name { font-weight: 600; }
 .lane-sub { font-size: 12px; color: var(--muted); }
 .cands { display: flex; flex-wrap: wrap; gap: 8px; min-height: 34px; }
-.cand { width: 92px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 7px;
-  background: var(--bg); cursor: pointer; font-size: 12px; position: relative;
-  animation: pop .25s ease-out; }
+.cand { width: 92px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 7px; background: var(--bg);
+  cursor: pointer; font-size: 12px; position: relative; animation: pop .25s ease-out; }
 @keyframes pop { from { transform: scale(.85); opacity: 0; } to { transform: none; opacity: 1; } }
 .cand .k { color: var(--ink2); }
 .cand.fail { border-color: var(--bad); background: var(--bad-soft); }
 .cand.best { outline: 2px solid var(--warn); }
 .cand.accepted { outline: 3px solid var(--ok); background: var(--ok-soft); }
 .bar { height: 6px; background: var(--line); border-radius: 3px; margin-top: 5px; position: relative; overflow: visible; }
-.bar > i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); border-radius: 3px; }
+.bar > i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); border-radius: 3px; transition: width .25s; }
 .bar > b { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--ink); }
 .lane-status { font-size: 12px; margin-top: 4px; color: var(--ink2); }
-.narr { list-style: none; margin: 0; padding: 0; max-height: 280px; overflow: auto; font-size: 14px; }
-.narr li { padding: 6px 0; border-bottom: 1px solid var(--line); }
+.narr { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow: auto; font-size: 14px; }
+.narr li { padding: 5px 0; border-bottom: 1px solid var(--line); }
 .narr li:last-child { border-bottom: 0; }
 .narr .t { color: var(--muted); font-size: 12px; margin-right: 6px; font-family: var(--mono); }
-.verdict { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+.verdict { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
 .verdict .big { font-size: 22px; font-weight: 700; }
 .verdict .big.ok { color: var(--ok); } .verdict .big.abs { color: var(--warn); }
-.stat { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; min-width: 120px; }
+.stats { display: flex; gap: 10px; flex-wrap: wrap; }
+.stat { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; min-width: 112px; }
 .stat .v { font-size: 18px; font-weight: 700; } .stat .l { font-size: 12px; color: var(--muted); }
-.pill { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; }
+.stat.good .v { color: var(--ok); } .stat.bad .v { color: var(--bad); } .stat.warn .v { color: var(--warn); }
+.pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
 .pill.ok { background: var(--ok-soft); color: var(--ok); } .pill.bad { background: var(--bad-soft); color: var(--bad); }
-.pill.na { background: var(--code-bg); color: var(--ink2); }
-.guarantee { margin-top: 12px; padding: 10px 12px; border-left: 3px solid var(--accent);
-  background: var(--accent-soft); border-radius: 6px; font-size: 14px; }
+.pill.na { background: var(--code-bg); color: var(--ink2); } .pill.abs { background: var(--warn-soft); color: var(--warn); }
+.guarantee { margin-top: 12px; padding: 10px 12px; border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: 6px; font-size: 14px; }
+.progress { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; margin: 4px 0 12px; }
+.progress > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .15s; }
+.charts { display: grid; grid-template-columns: 1.3fr 1fr; gap: 14px; margin-top: 12px; }
+@media (max-width: 760px) { .charts { grid-template-columns: 1fr; } }
+.chart { border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: var(--bg); }
+.chart h4 { margin: 0 0 6px; font-size: 13px; color: var(--ink2); font-weight: 600; }
+.chart svg { width: 100%; height: 150px; display: block; }
+.rungs .rung { display: grid; grid-template-columns: 96px 1fr 44px; gap: 8px; align-items: center; font-size: 12px; margin: 5px 0; }
+.rungs .track { height: 12px; background: var(--line); border-radius: 3px; overflow: hidden; display: flex; }
+.rungs .track i { display: block; height: 100%; }
+.rungs .track i.c { background: var(--ok); } .rungs .track i.w { background: var(--bad); } .rungs .track i.a { background: var(--warn); }
+.btable { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
+.btable th { text-align: left; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--line); padding: 4px 6px; position: sticky; top: 0; background: var(--panel); }
+.btable td { padding: 4px 6px; border-bottom: 1px solid var(--line); }
+.btable tbody tr { cursor: pointer; } .btable tbody tr:hover { background: var(--accent-soft); }
+.tablewrap { max-height: 260px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; margin-top: 12px; }
+.tablewrap .btable { margin-top: 0; }
 .drawer { position: fixed; right: 0; top: 0; bottom: 0; width: min(560px, 100%); background: var(--panel);
   border-left: 1px solid var(--line); box-shadow: -8px 0 24px rgba(0,0,0,.15); padding: 18px;
   transform: translateX(105%); transition: transform .2s ease; overflow: auto; z-index: 10; }
 .drawer.open { transform: none; }
 .drawer pre { max-height: none; }
-.close { float: right; background: none; border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+.close { float: right; background: none; border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; color: var(--ink2); }
 .empty { color: var(--muted); font-size: 14px; }
 .err { color: var(--bad); }
 .legend { font-size: 12px; color: var(--muted); display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; }
@@ -126,18 +163,43 @@ pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-family: var
 .legend .lf::before { background: var(--bad-soft); border-color: var(--bad); }
 .legend .lb::before { outline: 2px solid var(--warn); }
 .legend .la::before { background: var(--ok-soft); border-color: var(--ok); }
+.legend .lc::before { background: var(--ok); border-color: var(--ok); }
+.legend .lw::before { background: var(--bad); border-color: var(--bad); }
+.legend .lab::before { background: var(--warn); border-color: var(--warn); }
 </style>
 </head>
 <body>
 <header>
   <h1>CodeLadder</h1>
   <p>Certified code generation: a ladder of open models that answers only when its risk is provably low.</p>
+  <span class="keys"><kbd>R</kbd> run · <kbd>Space</kbd> pause · <kbd>→</kbd> step · <kbd>Esc</kbd> close</span>
+  <button class="theme" id="theme" title="Switch light / dark">◐</button>
 </header>
 <main class="layout">
   <aside>
     <div class="card">
       <h2>1 · Certified policy</h2>
-      <select id="policy" aria-label="Policy"></select>
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" id="tabBuild" aria-selected="true">Build a ladder</button>
+        <button class="tab" role="tab" id="tabSaved" aria-selected="false">Saved policies</button>
+      </div>
+      <div id="paneBuild">
+        <span class="lbl">Benchmark</span>
+        <div class="seg" id="segBench"></div>
+        <span class="lbl">Models</span>
+        <div class="seg" id="segFamilyModels"></div>
+        <select id="ladderSel" aria-label="Models in the ladder" style="margin-top:6px"></select>
+        <span class="lbl">How thresholds are set</span>
+        <div class="seg" id="segFamily"></div>
+        <div class="hint" id="familyHint"></div>
+        <span class="lbl">Confidence score</span><select id="scoreSel" aria-label="Score"></select>
+        <div id="leanBox"><span class="lbl">Draws on the cheaper rungs before escalating</span><div class="seg" id="segLean"></div></div>
+        <span class="lbl">Risk level α (share of tasks allowed to end with accepted but wrong code)</span>
+        <div class="alpha"><input type="range" id="alpha" min="0.02" max="0.30" step="0.01" value="0.10" aria-label="alpha"><output id="alphaOut">0.10</output></div>
+      </div>
+      <div id="paneSaved" hidden>
+        <select id="policy" aria-label="Saved policy"></select>
+      </div>
       <div class="chips" id="policyTiers"></div>
       <div class="policy-meta" id="policyMeta"></div>
     </div>
@@ -148,8 +210,14 @@ pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-family: var
         <button class="tab" role="tab" id="tabOwn" aria-selected="false">Your own</button>
       </div>
       <div id="paneBench">
-        <select id="bench" aria-label="Benchmark"></select>
-        <input type="search" id="search" placeholder="Search task id (e.g. HumanEval/32)" style="margin-top:8px">
+        <div class="row">
+          <div><select id="bench" aria-label="Benchmark"></select></div>
+          <div><select id="diff" aria-label="Difficulty"><option value="">any difficulty</option><option>easy</option><option>medium</option><option>hard</option></select></div>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <div style="flex:3"><input type="search" id="search" placeholder="Search task id (e.g. HumanEval/32)"></div>
+          <div style="flex:1"><button class="small" id="random" style="width:100%" title="Pick a random task">Random</button></div>
+        </div>
         <ul class="tasklist" id="tasks"></ul>
       </div>
       <div id="paneOwn" hidden>
@@ -163,28 +231,56 @@ pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-family: var
         <textarea id="ownTests">[{"input": [[3, 1, 4, 4]], "output": 3},
  {"input": [[7, 7]], "output": null},
  {"input": [[-2, -5, -1]], "output": -2}]</textarea>
-        <p class="empty">Your own problem runs live against the policy's models.</p>
+        <p class="hint">Your own problem has no cached candidates, so it runs live against the policy's models.</p>
       </div>
     </div>
     <div class="card">
-      <h2>3 · Run</h2>
+      <h2>3 · Run one problem</h2>
       <div class="radio" role="radiogroup" aria-label="Mode">
         <label><input type="radio" name="mode" value="replay" checked><span>Replay (cached)</span></label>
-        <label><input type="radio" name="mode" value="live"><span>Live (models)</span></label>
+        <label><input type="radio" name="mode" value="live" id="modeLive"><span>Live (models)</span></label>
       </div>
-      <div class="row" style="margin-top:10px">
+      <div class="live-note" id="liveNote"></div>
+      <div class="row" style="margin-top:6px">
         <div><label for="perm">Sample order</label>
           <select id="perm"><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
         <div><label for="speed">Pace</label>
-          <select id="speed"><option value="700">Narrated</option><option value="250" selected>Normal</option><option value="0">Instant</option></select></div>
+          <select id="speed"><option value="900">Narrated</option><option value="300" selected>Normal</option><option value="80">Fast</option><option value="0">Instant</option><option value="-1">Step by step</option></select></div>
       </div>
       <button class="run" id="run">Run the ladder</button>
+      <div class="player">
+        <button class="small" id="pause" disabled>Pause</button>
+        <button class="small" id="step" disabled>Step</button>
+        <button class="small" id="finish" disabled>To the end</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>4 · Run many problems</h2>
+      <div class="row">
+        <div><label for="batchN">Problems</label>
+          <select id="batchN"><option value="25">25</option><option value="50" selected>50</option><option value="100">100</option><option value="250">250</option><option value="0">all</option></select></div>
+        <div><label for="batchBench">From</label><select id="batchBench"></select></div>
+      </div>
+      <button class="run secondary" id="batch">Replay the policy on many problems</button>
+      <p class="hint">Replays cached candidates (no model calls) and counts how often the ladder answers, is right, is wrong, or abstains. A built ladder is certified on these same tasks; the held-out numbers under the policy come from 100 random calibration/test splits.</p>
     </div>
   </aside>
   <section class="stage">
     <div class="card problem" id="problemCard">
       <h3 id="problemTitle">Pick a policy and a problem</h3>
       <pre id="problemText" class="empty">The ladder tries the cheapest model first. A candidate is accepted only if it passes the checks and its score reaches the threshold certified for this rung; otherwise the ladder resamples, repairs, escalates to a larger model, or abstains.</pre>
+    </div>
+    <div class="card" id="batchCard" hidden>
+      <h2 id="batchTitle" style="text-transform:none;letter-spacing:0;font-size:14px;color:var(--ink2)">Many problems</h2>
+      <div class="progress"><i id="bProg"></i></div>
+      <div class="stats" id="bStats"></div>
+      <div class="charts">
+        <div class="chart"><h4>Accepted but wrong, running share (dashed: α)</h4><svg id="riskChart" viewBox="0 0 400 150" preserveAspectRatio="none" role="img" aria-label="running risk"></svg></div>
+        <div class="chart rungs"><h4>Where answers came from</h4><div id="rungBars"></div>
+          <div class="legend"><span class="lc">correct</span><span class="lw">wrong</span><span class="lab">abstained</span></div></div>
+      </div>
+      <div class="tablewrap"><table class="btable"><thead><tr><th>Task</th><th>Outcome</th><th>Rung</th><th>Draws</th><th>Cost</th></tr></thead><tbody id="bRows"></tbody></table></div>
+      <p class="hint">Click a row to replay that problem step by step.</p>
     </div>
     <div class="card">
       <h2>The ladder</h2>
@@ -212,99 +308,213 @@ pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-family: var
 <script>
 const MODELS = { t1: "Qwen 1.5B", t2: "Qwen 7B", t3: "Qwen 14B", t4: "Qwen 32B",
   d1: "DeepSeek 1.3B", d2: "DeepSeek 6.7B", d3: "DeepSeek 33B", api: "gpt-oss 120B" };
+const SHORT = { t1: "Q 1.5B", t2: "Q 7B", t3: "Q 14B", t4: "Q 32B", d1: "DS 1.3B", d2: "DS 6.7B", d3: "DS 33B", api: "120B API" };
+const BENCHES = { "humaneval+mbpp": "HumanEval+ & MBPP+", livecodebench: "LiveCodeBench", bigcodebench: "BigCodeBench" };
+const FAMILIES = {
+  single: ["One model", "A single model with a certified acceptance threshold."],
+  singles: ["Pick one model", "Certifies each model alone and picks the cheapest that meets α (calibrated model selection)."],
+  subsets: ["Sub-ladders", "Any ordered subset of the models as a ladder, each rung with its own threshold."],
+  two_level: ["Two-level ladder", "All models in order: one threshold for the cheaper rungs, one for the top."],
+};
+const SCORES = { agreement_selfconf: "agreement × self-rating", agreement_ptrue: "agreement × P(True)",
+  agreement: "agreement only", selfconf: "self-rating only", ptrue: "P(True) only" };
+const GROUPS = [["all", "All"], ["qwen", "Qwen"], ["deepseek", "DeepSeek"], ["mixed", "Mixed"], ["api", "With API"]];
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-let policies = [], current = null, tasks = [], chosen = null, cands = {}, runState = {};
-
+// "Qwen 1.5B (score ≥ 0.9) → Qwen 32B (score ≥ 0.6)": the rungs a policy uses at its α
+const describe = (tiers, th) => tiers.map((t, k) => th[k] === null ? null : `${MODELS[t] || t} (score ≥ ${th[k]})`).filter(Boolean).join(" → ") || "no rung";
+const pct = (x) => x == null ? "n/a" : (100 * x).toFixed(1) + "%";
+const name = (t) => esc(MODELS[t] || t);
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 async function getJSON(url) { const r = await fetch(url); return r.json(); }
 
-async function loadPolicies() {
-  policies = await getJSON("/api/policies");
-  $("policy").innerHTML = policies.map((p, i) =>
-    `<option value="${i}">${esc(p.id)} (α = ${p.alpha})</option>`).join("");
-  if (policies.length) selectPolicy(0); else $("policyMeta").textContent = "No policies found: run codeladder export-policy first.";
-}
+let catalog = [], saved = [], live = {}, current = null, tasks = [], chosen = null, cands = {}, runState = {};
+const sel = { bench: "humaneval+mbpp", group: "all", tiers: "t1-t2-t3-t4", family: "subsets", score: "agreement_selfconf", lean: true };
 
-function selectPolicy(i) {
-  current = policies[i];
-  $("policyTiers").innerHTML = current.tiers.map((t, k) => {
-    const th = current.thresholds[k];
-    return `<span class="tierchip ${th === null ? "off" : ""}">${esc(MODELS[t] || t)}${th === null ? "" : ` · λ ${th}`}</span>`;
-  }).join("");
-  const c = current.calibration || {};
-  $("policyMeta").innerHTML = `Certified on <b>${current.calibration_tasks}</b> tasks: accepted-but-wrong at most <b>${current.alpha}</b> with probability ${1 - current.delta}. On those tasks it answered <b>${pct(c.coverage)}</b> and solved <b>${pct(c.solved)}</b>.`;
-  $("bench").innerHTML = (current.benchmarks.length ? current.benchmarks : ["humaneval"]).map((b) => `<option>${b}</option>`).join("");
-  loadTasks();
-}
-const pct = (x) => x == null ? "n/a" : (100 * x).toFixed(1) + "%";
-
-async function loadTasks() {
-  tasks = await getJSON(`/api/tasks?benchmark=${$("bench").value}&tiers=${current.tiers.join(",")}`);
-  renderTasks();
-}
-function renderTasks() {
-  const q = $("search").value.toLowerCase();
-  const shown = tasks.filter((t) => t.id.toLowerCase().includes(q)).slice(0, 300);
-  $("tasks").innerHTML = shown.map((t) =>
-    `<li data-id="${esc(t.id)}" class="${t.replay ? "" : "noreplay"}" aria-selected="${chosen === t.id}">
-      <span>${esc(t.id)}</span>${t.difficulty ? `<span class="badge ${esc(t.difficulty)}">${esc(t.difficulty)}</span>` : ""}</li>`).join("")
-    || `<li class="noreplay">No tasks in the bundle for this benchmark.</li>`;
-}
-$("tasks").addEventListener("click", async (e) => {
-  const li = e.target.closest("li[data-id]"); if (!li) return;
-  chosen = li.dataset.id; renderTasks();
-  const t = await getJSON(`/api/task?benchmark=${$("bench").value}&id=${encodeURIComponent(chosen)}`);
-  $("problemTitle").textContent = chosen; $("problemText").textContent = t.prompt; $("problemText").classList.remove("empty");
+// ------------------------------------------------------------------ theme
+(() => { try { const t = localStorage.getItem("cl-theme"); if (t) document.documentElement.dataset.theme = t; } catch {} })();
+$("theme").addEventListener("click", () => {
+  const dark = document.documentElement.dataset.theme ? document.documentElement.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  document.documentElement.dataset.theme = dark ? "light" : "dark";
+  try { localStorage.setItem("cl-theme", document.documentElement.dataset.theme); } catch {}
 });
-$("search").addEventListener("input", renderTasks);
-$("bench").addEventListener("change", () => { chosen = null; loadTasks(); });
-$("policy").addEventListener("change", (e) => selectPolicy(+e.target.value));
-for (const [tab, pane, other, otherPane] of [["tabBench", "paneBench", "tabOwn", "paneOwn"], ["tabOwn", "paneOwn", "tabBench", "paneBench"]]) {
-  $(tab).addEventListener("click", () => {
-    $(tab).setAttribute("aria-selected", "true"); $(other).setAttribute("aria-selected", "false");
-    $(pane).hidden = false; $(otherPane).hidden = true;
-    if (tab === "tabOwn") document.querySelector('input[value=live]').checked = true;
+
+// ------------------------------------------------------------------ ladder builder
+const groupOf = (tiers) => tiers.includes("api") ? "api"
+  : tiers.every((t) => t.startsWith("t")) ? "qwen" : tiers.every((t) => t.startsWith("d")) ? "deepseek" : "mixed";
+function seg(el, options, value, onPick) {
+  el.innerHTML = options.map(([v, label, enabled = true]) =>
+    `<button type="button" data-v="${esc(v)}" aria-pressed="${String(v) === String(value)}" ${enabled ? "" : "disabled"}>${esc(label)}</button>`).join("");
+  el.onclick = (e) => { const b = e.target.closest("button[data-v]"); if (b && !b.disabled) onPick(b.dataset.v); };
+}
+function matches(r, f = {}) { return Object.entries(f).every(([k, v]) => k === "tiers" ? r.tiers.join("-") === v : r[k] === v); }
+function renderBuilder() {
+  const benches = [...new Set(catalog.map((r) => r.bench))];
+  if (!benches.includes(sel.bench)) sel.bench = benches[0];
+  seg($("segBench"), benches.map((b) => [b, BENCHES[b] || b]), sel.bench, (v) => { sel.bench = v; renderBuilder(); });
+  const inBench = catalog.filter((r) => r.bench === sel.bench);
+  const groups = GROUPS.map(([g, l]) => [g, l, g === "all" || inBench.some((r) => groupOf(r.tiers) === g)]);
+  if (!groups.find(([g, , ok]) => g === sel.group && ok)) sel.group = "all";
+  seg($("segFamilyModels"), groups, sel.group, (v) => { sel.group = v; renderBuilder(); });
+  const sets = [...new Map(inBench.filter((r) => sel.group === "all" || groupOf(r.tiers) === sel.group)
+    .map((r) => [r.tiers.join("-"), r.tiers])).values()]
+    .sort((a, b) => b.length - a.length || a.join().localeCompare(b.join()));
+  if (!sets.some((t) => t.join("-") === sel.tiers)) sel.tiers = (sets.find((t) => t.join("-") === "t1-t2-t3-t4") || sets[0] || []).join("-");
+  $("ladderSel").innerHTML = sets.map((t) => `<option value="${t.join("-")}" ${t.join("-") === sel.tiers ? "selected" : ""}>${t.map((x) => SHORT[x] || x).join(" → ")}${t.length === 1 ? " alone" : ""}</option>`).join("");
+  const forSet = inBench.filter((r) => r.tiers.join("-") === sel.tiers);
+  const fams = Object.keys(FAMILIES).filter((f) => forSet.some((r) => r.family === f));
+  if (!fams.includes(sel.family)) sel.family = fams.includes("subsets") ? "subsets" : fams[0];
+  seg($("segFamily"), fams.map((f) => [f, FAMILIES[f][0]]), sel.family, (v) => { sel.family = v; renderBuilder(); });
+  $("familyHint").textContent = (FAMILIES[sel.family] || [])[1] || "";
+  const forFam = forSet.filter((r) => r.family === sel.family);
+  const scores = [...new Set(forFam.map((r) => r.score))];
+  if (!scores.includes(sel.score)) sel.score = scores.includes("agreement_selfconf") ? "agreement_selfconf" : scores[0];
+  $("scoreSel").innerHTML = scores.map((s) => `<option value="${s}" ${s === sel.score ? "selected" : ""}>${esc(SCORES[s] || s)}</option>`).join("");
+  const leans = [...new Set(forFam.filter((r) => r.score === sel.score).map((r) => r.lean))];
+  $("leanBox").hidden = !(leans.length > 1 || leans[0]);
+  if (!leans.includes(sel.lean)) sel.lean = leans.includes(true);
+  seg($("segLean"), [[true, "1 draw (lean)", leans.includes(true)], [false, "up to 8 (full)", leans.includes(false)]], sel.lean,
+    (v) => { sel.lean = v === "true"; renderBuilder(); });
+  certifySoon();
+}
+$("ladderSel").addEventListener("change", (e) => { sel.tiers = e.target.value; renderBuilder(); });
+$("scoreSel").addEventListener("change", (e) => { sel.score = e.target.value; renderBuilder(); });
+$("alpha").addEventListener("input", (e) => { $("alphaOut").textContent = (+e.target.value).toFixed(2); certifySoon(); });
+
+let certTimer = null, certSeq = 0;
+function certifySoon() { clearTimeout(certTimer); certTimer = setTimeout(certify, 180); }
+async function certify() {
+  const entry = catalog.find((r) => matches(r, { bench: sel.bench, tiers: sel.tiers, family: sel.family, score: sel.score, lean: sel.lean }));
+  if (!entry) { setPolicy(null, "No evaluated run for this combination."); return; }
+  const alpha = (+$("alpha").value).toFixed(2), seq = ++certSeq;
+  $("policyMeta").innerHTML = `<span class="empty">Certifying at α = ${alpha}…</span>`;
+  const meta = await getJSON(`/api/certify?run=${encodeURIComponent(entry.run)}&alpha=${alpha}`);
+  if (seq !== certSeq) return;  // a newer request is on its way
+  if (meta.error) { setPolicy(null, `Nothing can be certified at α = ${alpha} with these models: even the most cautious setting is too risky on the calibration tasks. Try a larger α.`, entry); return; }
+  setPolicy(meta, null, entry);
+}
+
+function setPolicy(meta, problem, entry) {
+  current = meta;
+  if (!meta) {
+    $("policyTiers").innerHTML = ""; $("policyMeta").innerHTML = `<span class="err">${problem}</span>`;
+    updateLive(); return;
+  }
+  $("policyTiers").innerHTML = meta.tiers.map((t, k) => {
+    const th = meta.thresholds[k];
+    return (k ? `<span class="arrow">→</span>` : "") + `<span class="tierchip ${th === null ? "off" : ""}" title="${th === null ? "not used at this α" : "accepts at score ≥ " + th}">${esc(SHORT[t] || t)}${th === null ? "" : ` · ${th}`}</span>`;
+  }).join("");
+  const c = meta.calibration || {};
+  let html = `Certified on <b>${meta.calibration_tasks}</b> tasks: accepted-but-wrong at most <b>${meta.alpha}</b> with probability ${(1 - meta.delta).toFixed(2)}. On those tasks it answers <b>${pct(c.coverage)}</b>, solves <b>${pct(c.solved)}</b>, at a mean cost of <b>${Math.round(c.mean_cost || 0).toLocaleString()}</b>.`;
+  const split = entry && entry.split && entry.split[String(+meta.alpha)];
+  if (split) html += `<div class="tested">Held-out test at α = ${meta.alpha} (${split.splits} random calibration/test splits): solves <b>${pct(split.solved)}</b>, accepted-but-wrong <b>${pct(split.risk)}</b>, above α in <b>${pct(split.violation)}</b> of splits (allowed: ${pct(meta.delta)}).</div>`;
+  else if (entry) html += `<div class="tested hint">Held-out splits were run at α = 0.05, 0.10 and 0.20; move the slider there to see them.</div>`;
+  $("policyMeta").innerHTML = html;
+  const benches = meta.benchmarks && meta.benchmarks.length ? meta.benchmarks : ["humaneval"];
+  const prev = $("bench").value;
+  $("bench").innerHTML = benches.map((b) => `<option ${b === prev ? "selected" : ""}>${b}</option>`).join("");
+  $("batchBench").innerHTML = benches.map((b) => `<option value="${b}">${b}</option>`).join("") + (benches.length > 1 ? `<option value="${benches.join(",")}">all of them</option>` : "");
+  updateLive(); loadTasks();
+}
+
+// ------------------------------------------------------------------ saved policies and tabs
+async function loadSaved() {
+  saved = await getJSON("/api/policies");
+  $("policy").innerHTML = saved.map((p, i) => `<option value="${i}">${esc(p.id)} (α = ${p.alpha})</option>`).join("") || "<option>none found</option>";
+}
+$("policy").addEventListener("change", (e) => setPolicy(saved[+e.target.value] || null, "No saved policy."));
+function tabs(pairs, onSwitch) {
+  for (const [tab, pane] of pairs) $(tab).addEventListener("click", () => {
+    for (const [t, p] of pairs) { $(t).setAttribute("aria-selected", String(t === tab)); $(p).hidden = t !== tab; }
+    onSwitch && onSwitch(tab);
   });
 }
+tabs([["tabBuild", "paneBuild"], ["tabSaved", "paneSaved"]], (tab) => tab === "tabSaved" ? setPolicy(saved[+$("policy").value] || null, "No saved policy.") : certify());
+tabs([["tabBench", "paneBench"], ["tabOwn", "paneOwn"]], () => updateLive());
+const ownProblem = () => $("tabOwn").getAttribute("aria-selected") === "true";
 
+// ------------------------------------------------------------------ live availability
+function updateLive() {
+  const used = current ? current.tiers.filter((t, k) => current.thresholds[k] !== null) : [];
+  const missing = used.filter((t) => !(live[t] && live[t].ok));
+  const ok = used.length > 0 && missing.length === 0;
+  $("modeLive").disabled = !ok;
+  if (!ok) document.querySelector("input[value=replay]").checked = true;
+  if (ownProblem()) document.querySelector(`input[value=${ok ? "live" : "replay"}]`).checked = true;
+  $("liveNote").innerHTML = ok ? `Live mode can call ${used.map(name).join(", ")}.`
+    : used.length ? `Live mode needs every rung's model: ${missing.map((t) => `${name(t)}: <span class="bad">${esc(live[t] ? live[t].why : "unknown")}</span>`).join("; ")}. `
+      + (missing.some((t) => t !== "api") ? "Local models need a server (scripts/ada/serve_vllm.sbatch on the cluster). " : "")
+      + (missing.includes("api") ? "The API tier needs its keys, which stay on the cluster: run the demo there (see the README)." : "") : "";
+  $("run").disabled = ownProblem() && !ok;
+}
+
+// ------------------------------------------------------------------ tasks
+async function loadTasks() {
+  if (!current) return;
+  tasks = await getJSON(`/api/tasks?benchmark=${$("bench").value}&tiers=${current.tiers.join(",")}`);
+  const diffs = new Set(tasks.map((t) => t.difficulty).filter(Boolean));
+  $("diff").hidden = ![...diffs].some((d) => ["easy", "medium", "hard"].includes(d));
+  renderTasks();
+}
+function shownTasks() {
+  const q = $("search").value.toLowerCase(), d = $("diff").value;
+  return tasks.filter((t) => t.replay && t.id.toLowerCase().includes(q) && (!d || t.difficulty === d));
+}
+function renderTasks() {
+  const shown = shownTasks().slice(0, 400);
+  $("tasks").innerHTML = shown.map((t) =>
+    `<li data-id="${esc(t.id)}" aria-selected="${chosen === t.id}"><span>${esc(t.id)}</span>${t.difficulty && t.difficulty !== "full" ? `<span class="badge ${esc(t.difficulty)}">${esc(t.difficulty)}</span>` : ""}</li>`).join("")
+    || `<li class="noreplay">No cached tasks match.</li>`;
+}
+async function choose(id, bench) {
+  if (bench && bench !== $("bench").value) { $("bench").value = bench; await loadTasks(); }
+  chosen = id; renderTasks();
+  const li = document.querySelector(`#tasks li[data-id="${CSS.escape(id)}"]`); if (li) li.scrollIntoView({ block: "nearest" });
+  const t = await getJSON(`/api/task?benchmark=${$("bench").value}&id=${encodeURIComponent(id)}`);
+  $("problemTitle").textContent = id; $("problemText").textContent = t.prompt; $("problemText").classList.remove("empty");
+}
+$("tasks").addEventListener("click", (e) => { const li = e.target.closest("li[data-id]"); if (li) choose(li.dataset.id); });
+$("search").addEventListener("input", renderTasks);
+$("diff").addEventListener("change", renderTasks);
+$("bench").addEventListener("change", () => { chosen = null; loadTasks(); });
+$("random").addEventListener("click", () => { const s = shownTasks(); if (s.length) choose(s[Math.floor(Math.random() * s.length)].id); });
+
+// ------------------------------------------------------------------ one run: rendering
 function say(text) {
   const li = document.createElement("li");
   li.innerHTML = `<span class="t">${String($("narr").children.length + 1).padStart(2, "0")}</span>${text}`;
-  $("narr").appendChild(li); li.scrollIntoView({ block: "nearest" });
+  const narr = $("narr"); narr.appendChild(li); narr.scrollTop = narr.scrollHeight;  // scroll the list, not the page
 }
-const name = (t) => esc(MODELS[t] || t);
-
 function buildLadder(ev) {
   runState = { tiers: ev.tiers, thresholds: ev.thresholds, score: ev.score };
   $("ladder").innerHTML = ev.tiers.map((t, k) => {
     const th = ev.thresholds[k];
     return `<div class="lane ${th === null ? "skipped" : ""}" id="lane${k}">
-      <div><div class="lane-name">${name(t)}</div><div class="lane-sub">${th === null ? "not in this ladder" : `threshold λ = ${th}`}</div>
+      <div><div class="lane-name">${name(t)}</div><div class="lane-sub">${th === null ? "not used at this α" : `threshold λ = ${th}`}</div>
       <div class="lane-status" id="status${k}"></div></div>
       <div class="cands" id="cands${k}"></div></div>`;
   }).join("");
 }
-
 function scoreText(i, ev) {
   const id = ev.ids[i], c = cands[id] || {}, a = ev.agreement[i];
-  if (runState.score === "agreement_selfconf" && c.self_conf != null) return `agreement ${a.toFixed(2)} × confidence ${(+c.self_conf).toFixed(2)} = ${ev.scores[i].toFixed(2)}`;
-  if (runState.score === "agreement_ptrue" && c.p_true != null) return `agreement ${a.toFixed(2)} × P(correct) ${(+c.p_true).toFixed(2)} = ${ev.scores[i].toFixed(2)}`;
+  if (runState.score === "agreement_selfconf" && c.self_conf != null) return `agreement ${a.toFixed(2)} × self-rating ${(+c.self_conf).toFixed(2)} = ${ev.scores[i].toFixed(2)}`;
+  if (runState.score === "agreement_ptrue" && c.p_true != null) return `agreement ${a.toFixed(2)} × P(True) ${(+c.p_true).toFixed(2)} = ${ev.scores[i].toFixed(2)}`;
   return `score ${ev.scores[i].toFixed(2)}`;
 }
-
+const cid = (id) => "c_" + id.replace(/[^a-zA-Z0-9]/g, "_");
 function handle(ev) {
   const k = ev.tier;
   switch (ev.type) {
     case "start": buildLadder(ev); $("narr").innerHTML = ""; $("resultCard").hidden = true; cands = {};
-      say(`Policy <b>${esc(ev.setting)}</b>, certified at α = ${ev.alpha} (${ev.mode} mode).`); break;
+      say(`Policy <b>${esc(describe(ev.tiers, ev.thresholds))}</b>, certified at α = ${ev.alpha} (${ev.mode} mode).`); break;
     case "problem": $("problemTitle").textContent = ev.id; $("problemText").textContent = ev.prompt; $("problemText").classList.remove("empty"); break;
     case "tier": document.querySelectorAll(".lane").forEach((l) => l.classList.remove("active"));
-      $("lane" + k).classList.add("active");
+      $("lane" + k).classList.add("active"); $("lane" + k).scrollIntoView({ block: "nearest", behavior: "smooth" });
       say(`<b>${name(ev.tier_name)}</b>: accept a candidate only if it passes the checks and scores at least ${ev.threshold}; up to ${ev.max_draws} draws.`); break;
     case "draw": {
       const c = ev.cand; cands[c.id] = c;
       const el = document.createElement("div");
-      el.className = "cand" + (c.checks_ok ? "" : " fail"); el.id = "c_" + c.id.replace(/[^a-zA-Z0-9]/g, "_");
+      el.className = "cand" + (c.checks_ok ? "" : " fail"); el.id = cid(c.id);
       el.innerHTML = `<div><b>${c.kind === "repair" ? "repair" : "sample"} ${c.sample}${c.depth ? "." + c.depth : ""}</b></div>
         <div class="k">${c.checks_ok ? "passes checks" + (c.cluster ? " · " + c.cluster : "") : "fails tests"}</div>
         <div class="bar"><i style="width:0%"></i><b style="left:${100 * (runState.thresholds[k] ?? 0)}%"></b></div>`;
@@ -314,7 +524,7 @@ function handle(ev) {
       break; }
     case "scores": {
       ev.ids.forEach((id, i) => {
-        const el = $("c_" + id.replace(/[^a-zA-Z0-9]/g, "_")); if (!el) return;
+        const el = $(cid(id)); if (!el) return;
         el.querySelector(".bar i").style.width = (100 * Math.min(1, ev.scores[i])) + "%";
         el.classList.toggle("best", i === ev.best);
       });
@@ -323,7 +533,7 @@ function handle(ev) {
     case "resample": say(`Not enough evidence yet: draw another sample from ${name(ev.tier_name)}.`); break;
     case "repair": say(`Ask ${name(ev.tier_name)} to repair its most promising failing candidate, showing it the failed test.`); break;
     case "accept": {
-      const el = $("c_" + ev.cand.replace(/[^a-zA-Z0-9]/g, "_")); if (el) el.classList.add("accepted");
+      const el = $(cid(ev.cand)); if (el) el.classList.add("accepted");
       $("status" + k).textContent = "accepted here"; say(`<b>Accept</b> at ${name(ev.tier_name)}.`); break; }
     case "escalate": $("status" + k).textContent = "escalated"; say(`No candidate reached the certified threshold: <b>escalate</b> to the next model.`); break;
     case "abstain": say(`No rung could certify an answer: <b>abstain</b> (say "I don't know" rather than risk wrong code).`); break;
@@ -331,63 +541,175 @@ function handle(ev) {
     case "error": say(`<span class="err">${esc(ev.message)}</span>`); break;
   }
 }
-
 function showResult(ev) {
   $("resultCard").hidden = false;
   const hidden = ev.hidden_pass === true ? `<span class="pill ok">passes all hidden tests</span>`
     : ev.hidden_pass === false ? `<span class="pill bad">fails a hidden test</span>` : `<span class="pill na">hidden tests not run</span>`;
-  $("verdict").innerHTML = ev.accepted
+  $("verdict").innerHTML = (ev.accepted
     ? `<div><div class="big ok">Answered by ${name(ev.tier)}</div><div style="margin-top:6px">${hidden} <span class="lane-sub">(ground truth, never seen by the ladder)</span></div></div>`
-    : `<div class="big abs">Abstained</div>`;
-  $("verdict").innerHTML += `<div class="stat"><div class="v">${ev.drawn}</div><div class="l">candidates drawn</div></div>
+    : `<div class="big abs">Abstained</div>`) +
+    `<div class="stats"><div class="stat"><div class="v">${ev.drawn}</div><div class="l">candidates drawn</div></div>
     <div class="stat"><div class="v">${ev.tokens.toLocaleString()}</div><div class="l">tokens</div></div>
-    <div class="stat"><div class="v">${ev.cost.toLocaleString()}</div><div class="l">cost (weighted tokens × model size in B)</div></div>
-    <div class="stat"><div class="v">${ev.calibration ? Math.round(ev.calibration.mean_cost).toLocaleString() : "n/a"}</div><div class="l">policy's mean cost per task</div></div>`;
+    <div class="stat"><div class="v">${Math.round(ev.cost).toLocaleString()}</div><div class="l">cost (tokens × model size in B)</div></div>
+    <div class="stat"><div class="v">${ev.calibration ? Math.round(ev.calibration.mean_cost).toLocaleString() : "n/a"}</div><div class="l">policy's mean cost per task</div></div></div>`;
   $("guarantee").textContent = ev.guarantee || "";
   $("finalCode").textContent = ev.code || "(no code: the ladder abstained)";
 }
-
 function openCand(c) {
   $("dTitle").textContent = `${MODELS[c.tier] || c.tier}: ${c.kind} ${c.sample}${c.depth ? "." + c.depth : ""}`;
   $("dMeta").innerHTML = [c.checks_ok ? "passes the visible tests" + (c.cluster ? `, behaviour group ${c.cluster}` : "") : esc(c.feedback || c.error),
-    c.self_conf != null ? `self-rated confidence ${(+c.self_conf).toFixed(2)}` : "", c.p_true != null ? `P(correct) ${(+c.p_true).toFixed(2)}` : "",
-    `${c.tokens} tokens`].filter(Boolean).join(" · ");
+    c.self_conf != null ? `self-rating ${(+c.self_conf).toFixed(2)}` : "", c.p_true != null ? `P(True) ${(+c.p_true).toFixed(2)}` : "",
+    `${c.tokens} tokens`, `cost ${c.cost}`].filter(Boolean).join(" · ");
   $("dCode").textContent = c.code; $("drawer").classList.add("open");
 }
 $("closeDrawer").addEventListener("click", () => $("drawer").classList.remove("open"));
 
-$("run").addEventListener("click", async () => {
-  const own = $("tabOwn").getAttribute("aria-selected") === "true";
+// ------------------------------------------------------------------ one run: player
+const PACED = ["draw", "scores", "accept", "escalate", "resample", "repair", "tier"];
+const player = { queue: [], done: true, paused: false, steps: 0, rush: false, token: 0, ctrl: null };
+function setPlayer(active) {
+  for (const id of ["pause", "step", "finish"]) $(id).disabled = !active;
+  $("pause").textContent = player.paused ? "Resume" : "Pause";
+}
+async function playLoop(token) {
+  while (token === player.token && (player.queue.length || !player.done)) {
+    if (!player.queue.length) { await wait(30); continue; }
+    const paced = PACED.includes(player.queue[0].type);
+    // While paused only visible steps wait; bookkeeping events (start, problem, result) flow on.
+    if (paced && player.paused && !player.steps && !player.rush) { await wait(30); continue; }
+    if (paced && player.steps) player.steps--;
+    const ev = player.queue.shift(); handle(ev);
+    if (!player.rush && paced) {
+      const pace = +$("speed").value;
+      if (pace < 0) { player.paused = true; setPlayer(true); } else if (pace) await wait(pace);
+    }
+  }
+  if (token === player.token) { setPlayer(false); $("run").textContent = "Run the ladder"; }
+}
+async function runOne() {
+  if (!current) { alert("No certified policy selected."); return; }
+  const own = ownProblem();
   const mode = document.querySelector("input[name=mode]:checked").value;
   const body = { policy: current.id, mode, perm: +$("perm").value };
   if (own) {
     let tests; try { tests = JSON.parse($("ownTests").value); } catch { alert("Tests must be valid JSON."); return; }
-    body.problem = { prompt: $("ownPrompt").value, entry_point: $("ownEntry").value.trim(), tests };
-    body.mode = "live";
+    body.problem = { prompt: $("ownPrompt").value, entry_point: $("ownEntry").value.trim(), tests }; body.mode = "live";
   } else {
-    if (!chosen) { alert("Pick a task first."); return; }
+    if (!chosen) { alert("Pick a task first (or press Random)."); return; }
     body.benchmark = $("bench").value; body.task_id = chosen;
   }
-  $("run").disabled = true; $("run").textContent = mode === "live" ? "Asking the models…" : "Replaying…";
-  const pace = +$("speed").value;
+  if (player.ctrl) player.ctrl.abort();
+  const token = ++player.token, ctrl = new AbortController();
+  Object.assign(player, { queue: [], done: false, paused: +$("speed").value < 0, steps: +$("speed").value < 0 ? 1 : 0, rush: false, ctrl });
+  setPlayer(true); $("run").textContent = body.mode === "live" ? "Asking the models… (run again to restart)" : "Replaying… (run again to restart)";
+  playLoop(token);
   try {
-    const r = await fetch("/api/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    const reader = r.body.getReader(), dec = new TextDecoder(); let buf = "";
-    for (;;) {
-      const { value, done } = await reader.read(); if (done) break;
-      buf += dec.decode(value, { stream: true });
-      let nl;
-      while ((nl = buf.indexOf("\n")) >= 0) {
-        const line = buf.slice(0, nl); buf = buf.slice(nl + 1);
-        if (!line.trim()) continue;
-        const ev = JSON.parse(line); handle(ev);
-        if (pace && ["draw", "scores", "accept", "escalate", "resample", "repair"].includes(ev.type)) await new Promise((res) => setTimeout(res, pace));
-      }
-    }
-  } catch (e) { say(`<span class="err">${esc(e)}</span>`); }
-  $("run").disabled = false; $("run").textContent = "Run the ladder";
+    const r = await fetch("/api/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: ctrl.signal });
+    for await (const ev of ndjson(r)) { if (token !== player.token) break; player.queue.push(ev); }
+  } catch (e) { if (e.name !== "AbortError") player.queue.push({ type: "error", message: String(e) }); }
+  if (token === player.token) player.done = true;
+}
+async function* ndjson(r) {
+  const reader = r.body.getReader(), dec = new TextDecoder(); let buf = "";
+  for (;;) {
+    const { value, done } = await reader.read(); if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let nl;
+    while ((nl = buf.indexOf("\n")) >= 0) { const line = buf.slice(0, nl); buf = buf.slice(nl + 1); if (line.trim()) yield JSON.parse(line); }
+  }
+}
+$("run").addEventListener("click", runOne);
+$("pause").addEventListener("click", () => {
+  player.paused = !player.paused;
+  if (!player.paused && +$("speed").value < 0) $("speed").value = "300";  // resume from step mode at Normal pace
+  setPlayer(true);
 });
-loadPolicies();
+$("step").addEventListener("click", () => { player.paused = true; player.steps++; setPlayer(true); });
+$("finish").addEventListener("click", () => { player.rush = true; });
+
+// ------------------------------------------------------------------ many problems
+const batch = { rows: [], token: 0, ctrl: null };
+function stat(v, l, cls = "") { return `<div class="stat ${cls}"><div class="v">${v}</div><div class="l">${l}</div></div>`; }
+function renderBatch(final) {
+  const rows = batch.rows, n = rows.length, N = batch.n || n, alpha = batch.alpha;
+  $("bProg").style.width = (N ? 100 * n / N : 0) + "%";
+  const ans = rows.filter((r) => r.accepted), ok = ans.filter((r) => r.hidden_pass), wrong = ans.length - ok.length;
+  const cost = rows.reduce((s, r) => s + r.cost, 0), risk = n ? wrong / n : 0;
+  $("bStats").innerHTML = stat(`${n}${final ? "" : " / " + N}`, "problems") + stat(pct(n ? ans.length / n : null), `answered (${ans.length})`)
+    + stat(pct(n ? ok.length / n : null), `correct (${ok.length})`, "good")
+    + stat(pct(n ? risk : null), `accepted but wrong (${wrong}); α = ${alpha}`, risk > alpha ? "bad" : "")
+    + stat(pct(n ? (n - ans.length) / n : null), `abstained (${n - ans.length})`, "warn")
+    + stat(n ? Math.round(cost / n).toLocaleString() : "n/a", "mean cost per problem");
+  // running share of accepted-but-wrong against alpha
+  const W = 400, H = 150, ymax = Math.max(alpha * 2, ...batch.trace, 0.01);
+  const pts = batch.trace.map((y, i) => `${(W * (i + 1) / Math.max(N, 1)).toFixed(1)},${(H - H * y / ymax).toFixed(1)}`).join(" ");
+  const ya = (H - H * alpha / ymax).toFixed(1);
+  $("riskChart").innerHTML = `<line x1="0" x2="${W}" y1="${ya}" y2="${ya}" stroke="var(--ink)" stroke-dasharray="5 4" stroke-width="1.2" vector-effect="non-scaling-stroke"/>
+    <text x="4" y="${Math.max(10, ya - 4)}" font-size="11" fill="var(--ink2)">α = ${alpha}</text>
+    <polyline points="${pts}" fill="none" stroke="var(--bad)" stroke-width="2" vector-effect="non-scaling-stroke"/>`;
+  const by = {}; for (const t of batch.tiers) by[t] = { c: 0, w: 0 };
+  for (const r of ans) (by[r.tier] = by[r.tier] || { c: 0, w: 0 })[r.hidden_pass ? "c" : "w"]++;
+  const most = Math.max(1, ...Object.values(by).map((b) => b.c + b.w), n - ans.length);
+  $("rungBars").innerHTML = batch.tiers.map((t) => `<div class="rung"><span>${esc(SHORT[t] || t)}</span><span class="track"><i class="c" style="width:${100 * by[t].c / most}%"></i><i class="w" style="width:${100 * by[t].w / most}%"></i></span><span>${by[t].c + by[t].w}</span></div>`).join("")
+    + `<div class="rung"><span>abstained</span><span class="track"><i class="a" style="width:${100 * (n - ans.length) / most}%"></i></span><span>${n - ans.length}</span></div>`;
+}
+function batchRow(r) {
+  const out = !r.accepted ? `<span class="pill abs">abstained</span>` : r.hidden_pass ? `<span class="pill ok">correct</span>` : `<span class="pill bad">wrong</span>`;
+  const tr = document.createElement("tr");
+  tr.innerHTML = `<td>${esc(r.id)}${r.difficulty && r.difficulty !== "full" ? ` <span class="badge ${esc(r.difficulty)}">${esc(r.difficulty)}</span>` : ""}</td><td>${out}</td><td>${r.tier ? esc(SHORT[r.tier] || r.tier) : "-"}</td><td>${r.drawn}</td><td>${Math.round(r.cost).toLocaleString()}</td>`;
+  tr.addEventListener("click", async () => {
+    document.querySelector("input[value=replay]").checked = true;
+    if (ownProblem()) $("tabBench").click();
+    await choose(r.id, r.benchmark); $("speed").value = "300"; runOne();
+    $("problemCard").scrollIntoView({ behavior: "smooth" });
+  });
+  $("bRows").appendChild(tr);
+}
+$("batch").addEventListener("click", async () => {
+  if (!current) { alert("No certified policy selected."); return; }
+  if (batch.ctrl) batch.ctrl.abort();
+  const token = ++batch.token, ctrl = new AbortController(); batch.ctrl = ctrl;
+  Object.assign(batch, { rows: [], trace: [], n: 0, alpha: +current.alpha, tiers: current.tiers.filter((t, k) => current.thresholds[k] !== null) });
+  $("batchCard").hidden = false; $("bRows").innerHTML = ""; $("batch").disabled = true;
+  $("batchTitle").textContent = `Many problems · ${describe(current.tiers, current.thresholds)} · α = ${current.alpha}`;
+  $("bStats").innerHTML = `<span class="empty">Loading cached candidates…</span>`; $("riskChart").innerHTML = ""; $("rungBars").innerHTML = "";
+  $("batchCard").scrollIntoView({ behavior: "smooth" });
+  const body = { policy: current.id, n: +$("batchN").value, seed: Math.floor(Math.random() * 1e6), perm: +$("perm").value, benchmarks: $("batchBench").value.split(",") };
+  let last = 0;
+  try {
+    const r = await fetch("/api/batch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: ctrl.signal });
+    for await (const ev of ndjson(r)) {
+      if (token !== batch.token) break;
+      if (ev.type === "loading") $("bStats").innerHTML = `<span class="empty">Loading cached candidates for ${esc(ev.benchmark)}…</span>`;
+      else if (ev.type === "batch_start") { batch.n = ev.n; renderBatch(false); }
+      else if (ev.type === "task") {
+        batch.rows.push(ev);
+        batch.trace.push(batch.rows.filter((x) => x.accepted && !x.hidden_pass).length / batch.rows.length);
+        batchRow(ev);
+        if (performance.now() - last > 60) { renderBatch(false); last = performance.now(); await wait(0); }
+      } else if (ev.type === "error") $("bStats").innerHTML = `<span class="err">${esc(ev.message)}</span>`;
+    }
+    if (token === batch.token && batch.rows.length) renderBatch(true);
+  } catch (e) { if (e.name !== "AbortError") $("bStats").innerHTML = `<span class="err">${esc(e)}</span>`; }
+  if (token === batch.token) $("batch").disabled = false;
+});
+
+// ------------------------------------------------------------------ keyboard
+document.addEventListener("keydown", (e) => {
+  if ((e.target instanceof Element && e.target.closest("input, textarea, select, button")) || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === "Escape") $("drawer").classList.remove("open");
+  else if (e.key === "r" || e.key === "R") { e.preventDefault(); runOne(); }
+  else if (e.key === " " && !$("pause").disabled) { e.preventDefault(); $("pause").click(); }
+  else if ((e.key === "ArrowRight" || e.key === "n") && !$("step").disabled) { e.preventDefault(); $("step").click(); }
+});
+
+// ------------------------------------------------------------------ start
+(async () => {
+  [catalog, live] = await Promise.all([getJSON("/api/catalog"), getJSON("/api/live")]);
+  await loadSaved();
+  if (catalog.length) renderBuilder();
+  else { $("tabSaved").click(); }
+})();
 </script>
 </body>
 </html>

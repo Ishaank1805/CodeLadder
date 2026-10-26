@@ -13,10 +13,8 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass, field
 
-from .scoring import phi_scores
+from .scoring import checks_ok, phi_scores
 from .types import Candidate, TierPool
-
-ACTIONS = ("resample", "repair", "adaptive")
 
 
 def error_class(err: str) -> str:
@@ -31,12 +29,18 @@ def error_class(err: str) -> str:
 
 @dataclass
 class Policy:
-    thresholds: list[float]  # one per tier
+    thresholds: list[float | None]  # one per tier; None skips the tier (sub-ladders)
     n_init: int = 3
     max_draws: int = 8
     action: str = "resample"  # resample | repair | adaptive
-    action_table: dict[str, str] = field(default_factory=dict)  # "tier_idx|error_class" -> action
+    action_table: dict[str, str] = field(
+        default_factory=dict
+    )  # context key -> action (action_keys)
+    score: str = "agreement"  # one of scoring.SCORES (see scoring.phi_scores)
     name: str = ""
+    # Draws allowed at every tier below the last one used (None: max_draws everywhere);
+    # small values make cheap rungs give up early instead of spending a full budget.
+    lower_budget: int | None = None
 
 
 @dataclass
@@ -48,8 +52,8 @@ class Outcome:
     trace: list[tuple[int, str, float]] = field(default_factory=list)  # (tier, action, best phi)
 
 
-def _best(cands: list[Candidate]) -> tuple[int, float]:
-    scores = phi_scores(cands)
+def _best(cands: list[Candidate], score: str = "agreement") -> tuple[int, float]:
+    scores = phi_scores(cands, score)
     i = max(range(len(cands)), key=lambda k: (scores[k], -k))
     return i, scores[i]
 
@@ -68,6 +72,22 @@ def _repair_target(drawn: list[Candidate], pool: TierPool, used: set[str]) -> Ca
     return max(options, key=lambda c: (c.visible_pass_rate, c.depth))
 
 
+def visible_bucket(rate: float) -> str:
+    return "0" if rate <= 0 else ("low" if rate < 0.5 else "high")
+
+
+def action_keys(tier_idx: int, target: Candidate) -> list[str]:
+    """Context keys for the action table, most specific first: tier, error class, visible pass
+    rate bucket and repair depth of the candidate that would be repaired; then tier and error
+    class; then tier. A table may define any of these levels (X4 learns all three)."""
+    err = error_class(target.error_type)
+    return [
+        f"{tier_idx}|{err}|{visible_bucket(target.visible_pass_rate)}|{target.depth}",
+        f"{tier_idx}|{err}",
+        f"{tier_idx}",
+    ]
+
+
 def _choose_action(policy: Policy, tier_idx: int, drawn: list[Candidate]) -> str:
     if policy.action != "adaptive":
         return policy.action
@@ -75,35 +95,57 @@ def _choose_action(policy: Policy, tier_idx: int, drawn: list[Candidate]) -> str
     if not failing:
         return "resample"
     target = max(failing, key=lambda c: (c.visible_pass_rate, c.depth))
-    return policy.action_table.get(f"{tier_idx}|{error_class(target.error_type)}", "resample")
+    for key in action_keys(tier_idx, target):
+        if key in policy.action_table:
+            return policy.action_table[key]
+    return "resample"
 
 
-def run_task(pools: list[TierPool], policy: Policy, perm_seed: int = 0) -> Outcome:
-    """Replay the controller on one task. ``pools`` are ordered cheapest tier first."""
+def run_task(pools: list[TierPool], policy: Policy, perm_seed: int = 0, on_event=None) -> Outcome:
+    """Replay the controller on one task. ``pools`` are ordered cheapest tier first.
+
+    ``on_event`` (optional, for the demo) receives a dict per step: tier, draw, scores,
+    accept, resample / repair, escalate, abstain. Without it nothing extra is computed."""
+    emit = on_event or (lambda e: None)
     all_drawn: list[Candidate] = []
     trace: list[tuple[int, str, float]] = []
     fallbacks = 0
+    last = max(i for i, th in enumerate(policy.thresholds) if th is not None)
     for t, pool in enumerate(pools):
         lam = policy.thresholds[t]
+        if lam is None:
+            continue  # tier not part of this ladder
+        max_draws, n_init = policy.max_draws, policy.n_init
+        if policy.lower_budget is not None and t < last:
+            max_draws, n_init = policy.lower_budget, min(policy.n_init, policy.lower_budget)
         order = list(range(len(pool.samples)))
         random.Random(perm_seed * 1009 + t).shuffle(order)
         fresh = iter([pool.samples[k] for k in order])  # samples in this replay's order
         drawn: list[Candidate] = []
         used: set[str] = set()
+        if on_event:
+            emit({"type": "tier", "tier": t, "threshold": lam, "max_draws": max_draws})
 
-        for _ in range(policy.n_init):
+        for _ in range(n_init):
             c = next(fresh, None)
             if c is None:
                 break
             drawn.append(c)
             used.add(c.cand_id)
+            if on_event:
+                emit({"type": "draw", "tier": t, "cand": c})
 
         while drawn:
-            i, score = _best(drawn)
-            if score >= lam and drawn[i].passes_visible:
+            i, score = _best(drawn, policy.score)
+            if on_event:
+                emit({"type": "scores", "tier": t, "scores": phi_scores(drawn, policy.score),
+                      "best": i, "threshold": lam})  # fmt: skip
+            if score >= lam and checks_ok(drawn[i]):
                 trace.append((t, "accept", score))
+                if on_event:
+                    emit({"type": "accept", "tier": t, "cand": drawn[i], "score": score})
                 return Outcome(drawn[i], t, all_drawn + drawn, fallbacks, trace)
-            if len(drawn) >= policy.max_draws:
+            if len(drawn) >= max_draws:
                 break
             action = _choose_action(policy, t, drawn)
             nxt: Candidate | None = None
@@ -119,10 +161,17 @@ def run_task(pools: list[TierPool], policy: Policy, perm_seed: int = 0) -> Outco
             if nxt is None:
                 break  # pool exhausted
             trace.append((t, action, score))
+            if on_event:
+                emit({"type": action, "tier": t})
+                emit({"type": "draw", "tier": t, "cand": nxt})
             drawn.append(nxt)
             used.add(nxt.cand_id)
-        trace.append((t, "escalate", _best(drawn)[1] if drawn else 0.0))
+        trace.append((t, "escalate", _best(drawn, policy.score)[1] if drawn else 0.0))
+        if on_event:
+            emit({"type": "escalate", "tier": t})
         all_drawn.extend(drawn)
+    if on_event:
+        emit({"type": "abstain"})
     return Outcome(None, None, all_drawn, fallbacks, trace)
 
 

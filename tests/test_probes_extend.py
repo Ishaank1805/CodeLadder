@@ -47,7 +47,7 @@ def test_stdin_probes_keep_the_input_format():
 
 
 def test_one_line_inputs_are_data():
-    for x in ["7\n", "3 5\n", "1 0 1 1 0 0 1 0\n", "-4 0\n"]:
+    for x in ["7\n", "3 5\n", "1 0 1 1 0 0 1 0\n", "-4 0\n", "-20 -1000000000\n"]:
         probes = make_stdin_probes([x], 20, seed=0)
         assert len(probes) >= 5
         for p in probes:
@@ -111,3 +111,23 @@ def test_truncate_pool_matches_generating_with_smaller_settings():
     direct = build_pool(task, "t1", SlowRepairClient(SOLUTIONS), small, PROBES, EXEC)
     assert _ids(truncate_pool(full, max_samples=4, max_depth=1)) == _ids(direct)
     assert _ids(truncate_pool(full)) == _ids(full)
+
+
+def test_hidden_chunks_cover_every_input_once():
+    from codeladder.generate import hidden_chunks
+
+    for n in (0, 1, 5, 21, 85, 86, 1000, 2345):
+        ch = hidden_chunks(n)
+        assert [i for a, b in ch for i in range(a, b)] == list(range(n))
+        assert all(b - a <= 250 for a, b in ch)
+    assert hidden_chunks(1000)[:5] == [(0, 1), (1, 5), (5, 21), (21, 85), (85, 335)]
+
+
+def test_hidden_label_does_not_depend_on_chunking():
+    from codeladder.generate import passes_hidden
+
+    for task in toy_tasks():
+        good, bad = SOLUTIONS[task.entry_point]
+        for size in (1, 3, 250):
+            cfg = dict(EXEC, hidden_chunk=size)
+            assert passes_hidden(task, good, cfg) and not passes_hidden(task, bad, cfg)

@@ -26,6 +26,9 @@ def official_digests(name: str, version: str) -> dict[str, str]:
 
 
 def main() -> int:
+    if len(sys.argv) != 2 or sys.argv[1] in ("-h", "--help"):
+        print(__doc__)
+        return 0 if len(sys.argv) == 2 else 2
     root = Path(sys.argv[1])
     bad = 0
     files = sorted(p for p in root.iterdir() if p.is_file())

@@ -16,24 +16,22 @@ dependencies = [
   "scipy>=1.10",
   "pyyaml>=6.0",
   "openai>=1.40",
-  "tqdm>=4.66",
 ]
 
 [project.optional-dependencies]
 benchmarks = [
   "evalplus>=0.3.1",
-  "datasets>=2.19",
 ]
 energy = [
   "nvidia-ml-py>=12.535",
 ]
 analysis = [
-  "pandas>=2.0",
   "matplotlib>=3.8",
 ]
 dev = [
   "pytest>=8.0",
   "ruff>=0.5",
+  "packaging>=23",  # scripts/verify_wheels.py
 ]
 
 [project.scripts]
@@ -49,3 +47,6 @@ addopts = "-q"
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+
+[tool.setuptools.package-data]
+codeladder = ["demo_page.html", "bcb_bin/*"]

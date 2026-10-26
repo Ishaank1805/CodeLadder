@@ -5,7 +5,7 @@
 source "$(dirname "$0")/common.sh"
 specs=""
 for b in humaneval mbpp livecodebench; do for t in t1 t2 t3 t4 d1 d2 d3; do specs="$specs $b/$t"; done; done
-py scripts/show_results.py ratings $specs
+py scripts/show_results.py ratings $specs --json results/analysis/signals_auroc.json
 for B in "humaneval mbpp" livecodebench; do
   for s in agreement_ptrue ptrue; do
     for t in t1 t2 t3 t4 d1 d2 d3; do ev --benchmark $B --tiers $t --score $s --abstain-factor 64 --tag=-k64; done

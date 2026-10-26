@@ -19,6 +19,9 @@ import math
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from codeladder.results import find_result, iter_runs  # noqa: E402
+
 BENCH = {
     "humaneval+mbpp": "HumanEval+/MBPP+",
     "livecodebench": "LiveCodeBench",
@@ -32,7 +35,7 @@ QWEN = "t1-t2-t3-t4"
 
 
 def _load(root: Path, name: str) -> dict | None:
-    p = root / name / "summary.json"
+    p = find_result(root, name) / "summary.json"
     return json.loads(p.read_text()) if p.exists() else None
 
 
@@ -114,7 +117,7 @@ def main_table(root: Path, out: Path) -> None:
         if g:
             for k, name in (("toe", "Trust or Escalate"), ("toe-lean", "Trust or Escalate (lean)")):
                 rows.append([name] + [_cell(_at(g["methods"][k], a)) for a in ALPHAS])
-        bp = root / f"baselines-{bench}-{QWEN}.json"
+        bp = find_result(root, f"baselines-{bench}-{QWEN}.json")
         if bp.exists():
             b = json.loads(bp.read_text())
             for k, name in (("mcc", "Model Cascading for Code (tuned)"),
@@ -129,7 +132,9 @@ def main_table(root: Path, out: Path) -> None:
 
 def signals(root: Path, out: Path) -> None:
     d: dict = {}
-    for p in sorted(root.glob("signals_auroc*.json")):
+    for p in sorted(
+        [*(root / "analysis").glob("signals_auroc*.json"), *root.glob("signals_auroc*.json")]
+    ):
         for b, v in json.loads(p.read_text()).items():
             d.setdefault(b, {}).update(v)
     if not d:
@@ -151,7 +156,7 @@ def signals(root: Path, out: Path) -> None:
 
 def economics(root: Path, out: Path) -> None:
     rows = []
-    for d in sorted(root.glob("economics-*-agreement_selfconf-k64-lb1")):
+    for d in iter_runs(root, "economics-*-agreement_selfconf-k64-lb1"):
         bench = d.name.split("-")[1]
         if bench not in BENCH:
             continue
@@ -246,7 +251,9 @@ def oracle(root: Path, out: Path) -> None:
 
 
 def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else "results")
+    root = (
+        Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parents[1] / "results"
+    )
     out = root / "tables"
     for f in (main_table, signals, economics, ci, oracle):
         f(root, out)

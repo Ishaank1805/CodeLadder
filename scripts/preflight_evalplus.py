@@ -4,8 +4,8 @@ For every task we judge the reference solution and up to 3 AST mutants (small bu
 such as + -> -, < -> <=, constant + 1) with our harness, then run
 ``evalplus.evaluate`` on the same programs and compare pass/fail verdicts.
 
-    python scripts/preflight_evalplus.py humaneval --out results/preflight --workers 8
-    python scripts/preflight_evalplus.py mbpp --out results/preflight --workers 8
+    python scripts/preflight_evalplus.py humaneval --out results/analysis/preflight --workers 8
+    python scripts/preflight_evalplus.py mbpp --out results/analysis/preflight --workers 8
 
 Needs ``pip install evalplus``. Uses up to ~4 GB per worker on a few tasks, so run
 it on Ada (scripts/ada/preflight.sbatch) rather than a small laptop.
@@ -24,17 +24,13 @@ from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
-from codeladder.generate import evaluate_code
-from codeladder.tasks import attach_expected_outputs, load_tasks
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-EXEC = {
-    "per_call_timeout_s": 2.0,
-    "total_timeout_cap_s": 60,
-    "hidden_chunk": 250,
-    "ref_time_factor": 4.0,
-    "memory_mb": 2048,
-    "memory_mb_hidden": 4096,
-}
+from codeladder.config import load_experiment  # noqa: E402
+from codeladder.generate import evaluate_code  # noqa: E402
+from codeladder.tasks import attach_expected_outputs, load_tasks  # noqa: E402
+
+EXEC = load_experiment()["execution"]  # the same sandbox settings as the main runs
 SWAP = {
     ast.Add: ast.Sub, ast.Sub: ast.Add, ast.Lt: ast.LtE, ast.LtE: ast.Lt, ast.Gt: ast.GtE,
     ast.GtE: ast.Gt, ast.Eq: ast.NotEq, ast.NotEq: ast.Eq, ast.Mult: ast.FloorDiv,
@@ -88,7 +84,7 @@ def judge(task) -> list[dict]:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("benchmark", choices=["humaneval", "mbpp"])
-    ap.add_argument("--out", default="results/preflight")
+    ap.add_argument("--out", default="results/analysis/preflight")
     ap.add_argument("--workers", type=int, default=4)
     args = ap.parse_args()
     out = Path(args.out)
@@ -100,7 +96,11 @@ def main() -> int:
     errors = [r for r in rows if "harness_error" in r]
     rows = [r for r in rows if "harness_error" not in r]
     samples = out / f"{args.benchmark}_samples.jsonl"
-    samples.write_text("".join(json.dumps({"task_id": r["task_id"], "solution": r["solution"]}) + "\n" for r in rows))
+    samples.write_text(
+        "".join(
+            json.dumps({"task_id": r["task_id"], "solution": r["solution"]}) + "\n" for r in rows
+        )
+    )
     print(f"judged {len(rows)} programs in {time.time() - t0:.0f}s; running evalplus.evaluate ...")
 
     subprocess.run(

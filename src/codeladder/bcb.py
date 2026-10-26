@@ -37,7 +37,25 @@ def bcb_python() -> str:
 
 
 def unit_test_methods(test_code: str) -> list[str]:
-    """Test method names in source order (the first is the visible test)."""
+    """Test methods of the ``TestCases`` class in source order (the first is the visible test).
+
+    Only ``TestCases`` counts, as in BigCodeBench's own harness: a test file may define other
+    TestCase classes (BigCodeBench/790) that the benchmark never runs. Signatures may span
+    several lines (BigCodeBench/1028). Falls back to a pattern over the whole file if the test
+    code does not parse."""
+    import ast
+
+    try:
+        tree = ast.parse(test_code)
+    except SyntaxError:
+        tree = None
+    if tree is not None:
+        cls = next((n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "TestCases"),
+                   None)  # fmt: skip
+        if cls is not None:
+            return [f.name for f in cls.body
+                    if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    and f.name.startswith("test")]  # fmt: skip
     seen: list[str] = []
     for name in _METHOD.findall(test_code):
         if name not in seen:
@@ -48,7 +66,7 @@ def unit_test_methods(test_code: str) -> list[str]:
 def method_source(test_code: str, name: str) -> str:
     """Source of one test method (shown in repair feedback: it is the visible test)."""
     lines = test_code.splitlines()
-    start = next((i for i, ln in enumerate(lines) if re.match(rf"\s+def {name}\(self", ln)), None)
+    start = next((i for i, ln in enumerate(lines) if re.match(rf"\s+def {name}\(", ln)), None)
     if start is None:
         return ""
     indent = len(lines[start]) - len(lines[start].lstrip())
@@ -135,8 +153,16 @@ def run_bcb(
     )
     gb = 1024**3
     work = tempfile.mkdtemp(prefix="bcb-")
-    env = {
-        "PATH": "/usr/bin:/bin",
+    # A minimal environment for generated code (no keys or tokens from ours), keeping what an
+    # interpreter needs to start (a relocated Python needs LD_LIBRARY_PATH).
+    env = {k: os.environ[k] for k in ("LD_LIBRARY_PATH", "LANG", "LC_ALL") if k in os.environ}
+    env |= {
+        # The environment's own python first (tests run scripts with "python"), UTC like the
+        # benchmark's image, and the NLTK / TextBlob data installed by setup_bcb_env.sh.
+        # bcb_bin first: pkill / killall / kill limited to the test's own session.
+        "PATH": f"{Path(__file__).resolve().parent / 'bcb_bin'}:{Path(bcb_python()).parent}:/usr/bin:/bin",
+        "TZ": "UTC",
+        "NLTK_DATA": os.environ.get("NLTK_DATA", str(Path.home() / "nltk_data")),
         "HOME": work,
         "TMPDIR": work,
         "MPLBACKEND": "Agg",
@@ -147,20 +173,27 @@ def run_bcb(
         "MKL_NUM_THREADS": "1",
     }
     proc = subprocess.Popen(
-        [bcb_python(), str(RUNNER)],
+        # -I: isolated mode, so the runner's folder (which holds our types.py) is not put
+        # first on sys.path, where it would shadow the standard library's types module.
+        [bcb_python(), "-I", str(RUNNER)],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
         cwd=work,
         env=env,
+        # 30 GB address space and data: the official harness's limits.
         preexec_fn=_limits(
-            int(cfg.get("bcb_as_gb", 32)) * gb, int(cfg.get("bcb_data_gb", 16)) * gb
+            int(cfg.get("bcb_as_gb", 30)) * gb, int(cfg.get("bcb_data_gb", 30)) * gb
         ),
     )
     try:
-        out, _ = proc.communicate(payload.encode(), timeout=total)
+        out, err = proc.communicate(payload.encode(), timeout=total)
         lines = [ln for ln in out.decode(errors="replace").splitlines() if ln.startswith("{")]
-        res = json.loads(lines[-1]) if lines else {"fatal": "crashed", "detail": "no output"}
+        res = (
+            json.loads(lines[-1])
+            if lines
+            else {"fatal": "crashed", "detail": err.decode(errors="replace")[-1500:] or "no output"}
+        )
     except subprocess.TimeoutExpired:
         os.killpg(proc.pid, signal.SIGKILL)
         proc.communicate()
@@ -286,6 +319,8 @@ def check_references(tasks: list[Task], exec_cfg: dict[str, Any], workers: int =
         if res.get("fatal"):
             return task.task_id, f"{res['fatal']}: {str(res.get('detail', ''))[:200]}"
         bad = {m: r["status"] for m, r in res["methods"].items() if r["status"] != "pass"}
+        bad.update({m: "not run" for m in unit_test_methods(task.tests or "")
+                    if m not in res["methods"]})  # fmt: skip
         return task.task_id, json.dumps(bad) if bad else ""
 
     failures = {}

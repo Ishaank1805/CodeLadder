@@ -5,13 +5,15 @@ packages):
     python scripts/prepare_bcb.py [--split v0.1.4]
 
 Writes data/bcb/tasks.jsonl (task_id, complete_prompt, instruct_prompt, code_prompt,
-canonical_solution, test, entry_point, libs) and data/bcb/hard_ids.json.
+canonical_solution, test, entry_point, libs), data/bcb/hard_ids.json, and the API tier's
+subset data/bcb/subset_api400.json (all Hard tasks plus others sampled with seed 0).
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import random
 import time
 import urllib.parse
 import urllib.request
@@ -62,7 +64,12 @@ def main() -> int:
     with open(out / "tasks.jsonl", "w") as f:
         for r in full:
             f.write(json.dumps({k: r[k] for k in KEEP}) + "\n")
-    (out / "hard_ids.json").write_text(json.dumps(sorted(r["task_id"] for r in hard)))
+    hard_ids = sorted(r["task_id"] for r in hard)
+    (out / "hard_ids.json").write_text(json.dumps(hard_ids))
+    rest = sorted({r["task_id"] for r in full} - set(hard_ids))
+    random.Random(0).shuffle(rest)
+    subset = hard_ids + sorted(rest[: 400 - len(hard_ids)])
+    (out / "subset_api400.json").write_text(json.dumps(subset))
     print(f"{len(full)} tasks, {len(hard)} hard -> {out}")
     return 0
 

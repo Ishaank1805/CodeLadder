@@ -3,19 +3,31 @@
     codeladder demo-bundle --out data/demo           # on the cluster: prompts and visible tests
     codeladder demo [--port 8765]                    # anywhere with data/demo and data/pools
 
-A small standard-library web server (no extra packages) serves one page. Pick a certified
-policy (``export-policy`` output in examples/policies or results/policies), a problem (any
-benchmark task in the bundle, or your own function with tests) and a mode: **replay** runs
-the controller on the cached pools (instant, no model), **live** asks the policy's models for
-new candidates (needs their servers or API keys). Every step streams to the page as one JSON
-line: tier entered, candidate drawn (code, checks, ratings), scores against the certified
-threshold, then accept, resample / repair, escalate or abstain, and finally the hidden-test
-verdict (ground truth, which the controller never sees), the cost and the guarantee.
+A small standard-library web server (no extra packages) serves one page.
+
+* **Build a ladder**: choose a benchmark, the models (Qwen, DeepSeek, mixed, with the API
+  tier), the threshold family, the score and the lower-rung budget, then a risk level α; the
+  server certifies the policy on the spot from the matching evaluate run in results/ (its
+  replay of every setting on every task), as ``export-policy`` does. Saved policies
+  (examples/policies, results/policies) remain available.
+* **One problem** (a benchmark task, or your own function with tests) in **replay** mode (the
+  cached pools, instant) or **live** mode (the policy's models; needs their servers or API
+  keys). Every step streams to the page as one JSON line: tier entered, candidate drawn (code,
+  checks, ratings), scores against the certified threshold, then accept, resample / repair,
+  escalate or abstain, and finally the hidden-test verdict (ground truth, which the controller
+  never sees), the cost and the guarantee.
+* **Many problems**: replay the policy over a random sample of the benchmark and stream the
+  tally (answered, correct, accepted but wrong, abstained, cost, the rung that answered).
 """
 
 from __future__ import annotations
 
+import gzip
 import json
+import pickle
+import random
+import re
+import tempfile
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -24,17 +36,33 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from .config import REPO_ROOT, load_tiers
+from .results import find_result, iter_runs
+from .scoring import agreement_key
 from .types import Candidate, Task
 
 PAGE = Path(__file__).resolve().parent / "demo_page.html"
 BENCHMARKS = ("humaneval", "mbpp", "livecodebench", "bigcodebench")
+# Evaluate runs the ladder builder offers: one benchmark set, resample action, the reference baseline's price
+# of abstaining (κ = 64), full or lean (one draw) lower rungs.
+RUN_NAME = re.compile(
+    r"^(?P<bench>[a-z+]+)-(?P<tiers>(?:(?:t\d|d\d|api)-)+)resample-(?P<score>[a-z_]+)"
+    r"-(?P<family>shared|singles|subsets|two_level)(?P<tag>.*)$"
+)
+CATALOG_TAG = re.compile(r"^-k64(?P<lean>-lb1)?(?:-all7)?(?:-agr)?$")
+RUN_BENCHES = {
+    "humaneval+mbpp": ["humaneval", "mbpp"],
+    "livecodebench": ["livecodebench"],
+    "bigcodebench": ["bigcodebench"],
+    "toy": ["toy"],
+}  # fmt: skip  (toy: tests)
 
 
 # ---------------------------------------------------------------- bundle (run on the cluster)
 
 
 def make_bundle(out: str | Path, benchmarks: tuple[str, ...] = BENCHMARKS) -> dict[str, int]:
-    """Prompts, metadata and visible tests of every task, one JSON file per benchmark."""
+    """Prompts, metadata and visible tests of every task, one file per benchmark (gzipped
+    pickle: test inputs hold tuples, sets and complex numbers that JSON would change)."""
     from .tasks import load_tasks, prepare_task, release_tests
 
     out = Path(out)
@@ -67,7 +95,7 @@ def make_bundle(out: str | Path, benchmarks: tuple[str, ...] = BENCHMARKS) -> di
             }
             if bench == "livecodebench":
                 release_tests(t)
-        (out / f"{bench}.json").write_text(json.dumps(rows))
+        (out / f"{bench}.pkl.gz").write_bytes(gzip.compress(pickle.dumps(rows)))
         counts[bench] = len(rows)
     return counts
 
@@ -89,15 +117,23 @@ class Demo:
     def __init__(self, cfg: dict[str, Any], models: str, bundle: Path, policy_dirs: list[Path]):
         self.cfg, self.models, self.bundle, self.policy_dirs = cfg, models, bundle, policy_dirs
         self.tiers = {t.name: t for t in load_tiers(models)}
+        self.results = Path(cfg["paths"]["results"])
         self._tasks: dict[str, dict[str, Any]] = {}
         self._lock = threading.Lock()
+        self._catalog: list[dict[str, Any]] | None = None
+        self._certified: dict[tuple[str, float], dict[str, Any]] = {}
+        self._pools: tuple[tuple[str, tuple[str, ...]], dict[str, Any]] | None = None
+        self._live: tuple[float, dict[str, Any]] | None = None
 
     # -- data
     def tasks(self, bench: str) -> dict[str, Any]:
         with self._lock:
             if bench not in self._tasks:
-                f = self.bundle / f"{bench}.json"
-                self._tasks[bench] = json.loads(f.read_text()) if f.exists() else {}
+                f = self.bundle / f"{bench}.pkl.gz"
+                # Our own bundle (demo-bundle), so unpickling it is safe.
+                self._tasks[bench] = (
+                    pickle.loads(gzip.decompress(f.read_bytes())) if f.exists() else {}
+                )
             return self._tasks[bench]
 
     def policies(self) -> list[dict[str, Any]]:
@@ -112,16 +148,123 @@ class Demo:
                     continue
                 run = meta.get("source_run", "")
                 benches = [b for b in BENCHMARKS if b in run.split("-")[0].split("+")] or sorted(
-                    f.stem for f in self.bundle.glob("*.json") if not f.stem.startswith("_")
+                    f.name.removesuffix(".pkl.gz") for f in self.bundle.glob("*.pkl.gz")
                 )
                 out.append(meta | {"file": str(f), "id": f.stem, "benchmarks": benches})
         return out
 
-    def policy(self, pid: str) -> tuple[Any, dict[str, Any]]:
-        from .live import load_policy
+    def catalog(self) -> list[dict[str, Any]]:
+        """Evaluate runs a ladder can be certified from (see RUN_NAME and CATALOG_TAG)."""
+        if self._catalog is not None:
+            return self._catalog
+        seen, out = set(), []
+        for d in iter_runs(self.results):
+            if not (d / "replay.npz").exists():
+                continue
+            m = RUN_NAME.match(d.name)
+            t = CATALOG_TAG.match(m.group("tag")) if m else None
+            if not m or not t or m.group("bench") not in RUN_BENCHES:
+                continue
+            tiers = m.group("tiers").strip("-").split("-")
+            family = m.group("family") if len(tiers) > 1 else "single"
+            lean = bool(t.group("lean")) and family in ("subsets", "two_level")
+            key = (m.group("bench"), tuple(tiers), family, m.group("score"), lean)
+            if key in seen:  # e.g. a -agr duplicate of the same setting
+                continue
+            seen.add(key)
+            s = json.loads((d / "summary.json").read_text())
+            split = {
+                f"{c['alpha']:g}": {
+                    "solved": c.get("mean_solved"), "cost": c.get("mean_test_cost"),
+                    "risk": c.get("mean_test_risk"), "coverage": c.get("mean_coverage"),
+                    "violation": c.get("violation_rate"), "certified": c.get("certified_splits"),
+                    "splits": c.get("n_splits"),
+                }
+                for c in s.get("calibrated", []) if c.get("certified_splits")
+            }  # fmt: skip
+            out.append({
+                "run": d.name, "bench": m.group("bench"), "benchmarks": RUN_BENCHES[m.group("bench")],
+                "tiers": tiers, "family": family, "score": m.group("score"), "lean": lean,
+                "n_tasks": s.get("n_tasks"), "split": split,
+            })  # fmt: skip
+        self._catalog = out
+        return out
 
+    def certify(self, run: str, alpha: float) -> dict[str, Any]:
+        """Certify the run's family at alpha on all its tasks (as export-policy does)."""
+        from .live import export_policy
+
+        alpha = round(float(alpha), 4)
+        key = (run, alpha)
+        if key not in self._certified:
+            entry = next((r for r in self.catalog() if r["run"] == run), None)
+            if entry is None:
+                raise ValueError(f"unknown run {run}")
+            meta = export_policy(find_result(self.results, run), self.cfg, alpha)
+            self._certified[key] = meta | {"id": f"run:{run}@{alpha}",
+                                           "benchmarks": entry["benchmarks"]}  # fmt: skip
+        return self._certified[key]
+
+    def policy(self, pid: str) -> tuple[Any, dict[str, Any]]:
+        from .live import load_policy, policy_from_meta
+
+        if pid.startswith("run:"):
+            run, alpha = pid[4:].rsplit("@", 1)
+            meta = self.certify(run, float(alpha))
+            return policy_from_meta(meta), meta
         meta = next(p for p in self.policies() if p["id"] == pid)
         return load_policy(meta["file"])[0], meta
+
+    def live_status(self) -> dict[str, Any]:
+        """Which tiers live mode can call from here: an API tier needs a key (only its presence
+        is checked), a local tier a running server (scripts/ada/serve_vllm.sbatch writes its
+        address; it must answer within a second). Cached for 30 seconds."""
+        import urllib.request
+
+        if self._live and time.time() - self._live[0] < 30:
+            return self._live[1]
+        out = {}
+        for name, t in self.tiers.items():
+            if t.api_key_env:
+                try:
+                    ok, why = bool(t.api_keys()), "API key found"
+                except RuntimeError:
+                    ok, why = False, "no API key here"
+            else:
+                try:
+                    url = t.resolve_base_url()
+                    with urllib.request.urlopen(url + "/models", timeout=1):
+                        ok, why = True, f"server at {url}"
+                except FileNotFoundError:
+                    ok, why = False, "no server running"
+                except Exception:  # noqa: BLE001 (unreachable, stale address)
+                    ok, why = False, "server not reachable from here"
+            out[name] = {"ok": ok, "why": why}
+        self._live = (time.time(), out)
+        return out
+
+    def task_pools(self, bench: str, tiers: list[str], task_id: str) -> list[Any] | None:
+        """One task's pools, read directly (no need to load the whole benchmark)."""
+        from .types import TierPool
+
+        root = Path(self.cfg["paths"]["pools"]) / bench
+        out = []
+        for t in tiers:
+            f = root / t / f"{task_id.replace('/', '__')}.json"
+            if not f.exists():
+                return None
+            out.append(TierPool.from_dict(json.loads(f.read_text())))
+        return out
+
+    def bench_pools(self, bench: str, tiers: list[str]) -> dict[str, Any]:
+        """Every task's pools for one benchmark and tier list (the last one is kept in memory)."""
+        from .generate import load_pools
+
+        key = (bench, tuple(tiers))
+        with self._lock:
+            if self._pools is None or self._pools[0] != key:
+                self._pools = (key, load_pools(self.cfg["paths"]["pools"], bench, tiers))
+            return self._pools[1]
 
     def task_list(self, bench: str, tiers: list[str]) -> list[dict[str, Any]]:
         pools = Path(self.cfg["paths"]["pools"]) / bench
@@ -131,9 +274,10 @@ class Demo:
             have = ids if have is None else have & ids
         rows = self.tasks(bench)
         return [
-            {"id": tid, "difficulty": r.get("difficulty"), "replay": tid in (have or set())}
+            {"id": tid, "difficulty": r.get("difficulty"), "replay": tid in (have or set()),
+             "mode": r.get("mode")}
             for tid, r in rows.items()
-        ]
+        ]  # fmt: skip
 
     # -- runs
     def cost_fn(self, score: str):
@@ -144,7 +288,6 @@ class Demo:
         )
 
     def run(self, req: dict[str, Any], send) -> None:
-        from .generate import load_pools
         from .live import custom_task, replay, solve
         from .scoring import checks_ok, phi_scores
 
@@ -156,7 +299,7 @@ class Demo:
         t0 = time.time()
 
         def cand_view(c: Candidate, t: int) -> dict[str, Any]:
-            sig = c.extra.get("stress_sig") or c.signature
+            sig = agreement_key(c)  # the clusters the score counts
             if checks_ok(c) and sig not in clusters:
                 clusters[sig] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[len(clusters) % 26]
             return {
@@ -188,9 +331,10 @@ class Demo:
         send({"type": "start", "tiers": tiers, "thresholds": policy.thresholds, "score": policy.score,
               "alpha": meta["alpha"], "setting": meta.get("setting"), "mode": req.get("mode", "replay")})  # fmt: skip
         if req.get("problem"):
-            tmp = Path(self.bundle) / "_custom_problem.json"
-            tmp.write_text(json.dumps(req["problem"]))
-            task = custom_task(tmp)
+            with tempfile.TemporaryDirectory(prefix="codeladder-demo-") as d:  # one per request
+                tmp = Path(d) / "problem.json"
+                tmp.write_text(json.dumps(req["problem"]))
+                task = custom_task(tmp)
             bench = "custom"
         else:
             bench, tid = req["benchmark"], req["task_id"]
@@ -209,7 +353,7 @@ class Demo:
                 task, policy, tiers, clients, self.cfg, log=lambda m: None, on_event=on_event
             )
         else:
-            pools = load_pools(self.cfg["paths"]["pools"], bench, tiers).get(task.task_id)
+            pools = self.task_pools(bench, tiers, task.task_id)
             if pools is None:
                 send({"type": "error", "message": f"no cached pools of {task.task_id} for {tiers}"})
                 return
@@ -234,22 +378,65 @@ class Demo:
             "seconds": round(time.time() - t0, 2),
         })  # fmt: skip
 
+    def batch(self, req: dict[str, Any], send) -> None:
+        """Replay the policy over a random sample of tasks, one line per task, then a total."""
+        from .live import replay
+
+        policy, meta = self.policy(req["policy"])
+        tiers = meta["tiers"]
+        cost_fn = self.cost_fn(policy.score)
+        benches = req.get("benchmarks") or meta.get("benchmarks") or []
+        items = []
+        for b in benches:
+            send({"type": "loading", "benchmark": b})
+            pools = self.bench_pools(b, tiers)
+            items += [(b, tid, p) for tid, p in pools.items()]
+        rng = random.Random(int(req.get("seed", 0)))
+        rng.shuffle(items)
+        n = int(req.get("n") or 0)
+        items = items[:n] if n > 0 else items
+        send({"type": "batch_start", "n": len(items), "tiers": tiers, "alpha": meta["alpha"],
+              "thresholds": policy.thresholds})  # fmt: skip
+        perm = int(req.get("perm", 0))
+        for b, tid, pools in items:
+            o = replay(pools, policy, perm)
+            acc = o["accepted"]
+            send({
+                "type": "task", "benchmark": b, "id": tid, "tier": o["tier"],
+                "accepted": acc is not None,
+                "hidden_pass": bool(acc.hidden_pass) if acc is not None else None,
+                "cost": round(sum(cost_fn(c) for c in o["drawn"]), 1), "drawn": len(o["drawn"]),
+                "difficulty": self.tasks(b).get(tid, {}).get("difficulty"),
+            })  # fmt: skip
+        send({"type": "batch_done"})
+
 
 def _feedback_line(c: Candidate) -> str:
+    """One readable line about a visible-test failure (values as Python, not our encoding)."""
+    from .prompts import _show
+
     if c.visible_pass_rate >= 1.0:
         return ""
     f = c.feedback or {}
     kind = f.get("kind", c.error_type)
+
+    def show(v: Any) -> str:
+        try:
+            text = _show(v) if isinstance(v, list) and v and isinstance(v[0], str) else str(v)
+        except Exception:  # noqa: BLE001
+            text = str(v)
+        return text if len(text) <= 90 else text[:90] + "..."
+
     if kind == "wrong_answer":
-        return f"wrong answer on a visible test (expected {str(f.get('expected'))[:80]}, got {str(f.get('got'))[:80]})"
+        return f"wrong answer on a visible test: expected {show(f.get('expected'))}, got {show(f.get('got'))}"
+    if kind == "timeout":
+        return "too slow on a visible test"
+    if kind == "exception":
+        return f"raises {f.get('error', 'an error')} on a visible test: {str(f.get('detail', ''))[:140]}"
     if kind == "test_failure":
-        return (
-            "fails the visible unit test: "
-            + str(f.get("detail", "")).strip().splitlines()[-1][:160]
-            if f.get("detail")
-            else "fails the visible unit test"
-        )
-    return f"{kind}: {str(f.get('detail', ''))[:160]}"
+        detail = str(f.get("detail", "")).strip().splitlines()
+        return "fails the visible unit test" + (f": {detail[-1][:160]}" if detail else "")
+    return f"{kind.replace('exception:', 'raises ')}: {str(f.get('detail', ''))[:160]}"
 
 
 # ---------------------------------------------------------------- HTTP
@@ -281,6 +468,15 @@ def make_handler(app: Demo):
                     self.wfile.write(body)
                 elif url.path == "/api/policies":
                     self._json(app.policies())
+                elif url.path == "/api/live":
+                    self._json(app.live_status())
+                elif url.path == "/api/catalog":
+                    self._json(app.catalog())
+                elif url.path == "/api/certify":
+                    try:
+                        self._json(app.certify(q["run"], float(q["alpha"])))
+                    except ValueError as e:  # nothing certified at this alpha
+                        self._json({"error": str(e)})
                 elif url.path == "/api/tasks":
                     self._json(app.task_list(q["benchmark"], q["tiers"].split(",")))
                 elif url.path == "/api/task":
@@ -292,7 +488,8 @@ def make_handler(app: Demo):
                 self._json({"error": f"{type(e).__name__}: {e}"}, 500)
 
         def do_POST(self):  # noqa: N802
-            if urlparse(self.path).path != "/api/run":
+            path = urlparse(self.path).path
+            if path not in ("/api/run", "/api/batch"):
                 return self._json({"error": "not found"}, 404)
             req = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
             self.send_response(200)
@@ -305,7 +502,9 @@ def make_handler(app: Demo):
                 self.wfile.flush()
 
             try:
-                app.run(req, send)
+                (app.batch if path == "/api/batch" else app.run)(req, send)
+            except (BrokenPipeError, ConnectionResetError):
+                pass  # the page stopped reading (a new run started)
             except Exception as e:  # noqa: BLE001
                 send({"type": "error", "message": f"{type(e).__name__}: {e}"})
 

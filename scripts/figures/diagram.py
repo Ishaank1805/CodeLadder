@@ -144,7 +144,9 @@ def main() -> int:
         if i:
             arrow(ax, (x - gap, 0.115), (x, 0.115))
     xl = x0 + 3 * (w + gap) + w / 2
-    polyline_arrow(ax, [(xl, 0.20), (xl, 0.285), (0.645, 0.285), (0.645, 0.50 - h / 2 - 0.002)], AQUA)
+    polyline_arrow(
+        ax, [(xl, 0.20), (xl, 0.285), (0.645, 0.285), (0.645, 0.50 - h / 2 - 0.002)], AQUA
+    )
     ax.text(
         0.632,
         0.385,

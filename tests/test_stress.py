@@ -70,4 +70,51 @@ def test_slow_programs_split_from_fast_ones_on_stress_inputs():
     assert s_fast != s_slow and "timeout" in s_slow
     a, b, c = (cand("t1", i, visible=True, hidden=True) for i in range(3))
     a.extra["stress_sig"], b.extra["stress_sig"], c.extra["stress_sig"] = s_fast, s_fast, s_slow
-    assert phi_scores([a, b, c]) == [2 / 3, 2 / 3, 1 / 3]
+    assert phi_scores([a, b, c]) == [2 / 3, 2 / 3, 0.0]  # a stress timeout fails the checks
+    d = cand("t1", 3, visible=True, hidden=True, sig="mutated")
+    d.extra["probes"] = "stdin-v2"  # stdin task without stress inputs: visible share only
+    e = cand("t1", 4, visible=True, hidden=True, sig="other")
+    e.extra["probes"] = "stdin-v2"
+    assert phi_scores([d, e]) == [1.0, 1.0]
+
+
+def test_plausible_allows_digit_strings_where_publics_disagree():
+    assert plausible("?0?1\n", ["?0?\n2\n", "101\n3\n"])
+    assert not plausible("?0? 1\n", ["?0?\n2\n", "101\n3\n"])
+
+
+def test_too_large_generators_get_one_fix_request(tmp_path, monkeypatch):
+    import codeladder.tasks
+
+    monkeypatch.setattr(codeladder.tasks, "prepare_task", lambda t: t)
+
+    class FixingClient(GenClient):
+        def complete(self, messages, *, temperature, top_p, max_tokens, seed):
+            big = "print(3)\nprint('1 ' * 2_000_000)\n"
+            self.code = GEN if len(messages) > 2 else big  # fixed once told it is too large
+            return super().complete(
+                messages, temperature=temperature, top_p=top_p, max_tokens=max_tokens, seed=seed
+            )
+
+    client = FixingClient(GEN)
+    make_stress_inputs([stdin_task()], client, tmp_path, "m", n_generators=1, keep=1, workers=1)
+    assert client.calls == 2 and len(load_stress_inputs(tmp_path, stdin_task())) == 1
+
+
+def test_assert_lines_keep_only_valid_entry_point_asserts():
+    from codeladder.baselines_gen import assert_lines
+
+    task = stdin_task(mode="function", entry_point="add", prompt="def add(a, b):\n    pass\n")
+    text = "```python\nassert add(1, 2) == 3\nassert add(1,\nprint(1)\nassert other(1) == 2\nassert add(-1, 1) == 0\n```"
+    assert assert_lines(text, task) == ["assert add(1, 2) == 3", "assert add(-1, 1) == 0"]
+
+
+def test_token_stats_entropy_and_margin():
+    from types import SimpleNamespace as NS
+
+    from codeladder.llm import _token_stats
+
+    tok = NS(logprob=-0.1, top_logprobs=[NS(logprob=-0.1), NS(logprob=-2.4), NS(logprob=-5.0)])
+    lp, ent, margin = _token_stats(tok)
+    assert lp == -0.1 and 0 < ent < 0.6 and abs(margin - 2.3) < 1e-9
+    assert _token_stats(NS(logprob=-0.5, top_logprobs=[]))[1] == 0.0

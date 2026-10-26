@@ -15,6 +15,7 @@ import json
 import math
 import os
 import pickle
+import signal
 import subprocess
 import sys
 import tempfile
@@ -224,6 +225,26 @@ def _limits(memory_mb: int, cpu_s: int):
     return apply
 
 
+def run_isolated(cmd: list[str], timeout: float, **kw: Any) -> subprocess.CompletedProcess:
+    """``subprocess.run(cmd, capture_output=True, ...)`` for a child that calls ``os.setsid``
+    (see ``_limits``): on timeout the child's whole process group is killed, so processes the
+    program started do not outlive it, and ``TimeoutExpired`` is raised as by ``run``."""
+    data = kw.pop("input", None)
+    if data is not None:
+        kw["stdin"] = subprocess.PIPE
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kw)
+    try:
+        out, err = proc.communicate(data, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            proc.kill()
+        proc.communicate()
+        raise
+    return subprocess.CompletedProcess(cmd, proc.returncode, out, err)
+
+
 def run_program(
     code: str,
     entry_point: str,
@@ -265,10 +286,9 @@ def run_program(
     env = {"PATH": "/usr/bin:/bin", "PYTHONHASHSEED": "0", "PYTHONDONTWRITEBYTECODE": "1"}
     with tempfile.TemporaryDirectory(prefix="codeladder-") as tmp:
         try:
-            proc = subprocess.run(
+            proc = run_isolated(
                 [sys.executable, "-s", "-B", "-c", _RUNNER],
                 input=payload,
-                capture_output=True,
                 timeout=total_timeout,
                 cwd=tmp,
                 env=env,
@@ -291,7 +311,8 @@ def run_program(
 
 
 def canon(x: Any) -> list[Any]:
-    """Canonical form of a Python value, identical to what the sandbox returns."""
+    """Canonical form of a Python value, as the sandbox encodes results (for JSON-like values:
+    the sandbox also encodes complex numbers, bytes and sets, which callers here never pass)."""
     if x is None:
         return ["n"]
     if isinstance(x, bool):

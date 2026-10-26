@@ -1,6 +1,6 @@
 """Fill in energy for candidates generated before per-run energy attribution existed.
 
-For every tier, candidates without ``energy_j`` get tokens_out x (median measured joules per
+For every Qwen tier (t1 to t4), candidates without ``energy_j`` get tokens_out x (median measured joules per
 output token of that tier's other candidates), and are marked ``energy_estimated``. Run it
 only when no generation or annotation job is writing the same pools.
 

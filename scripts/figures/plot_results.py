@@ -1,6 +1,6 @@
 """Report figures from an evaluate run (results/<run>/summary.json + replay.npz).
 
-    python scripts/figures/plot_results.py results/humaneval+mbpp-t1-t2-resample-agreement
+    python scripts/figures/plot_results.py results/runs/humaneval+mbpp/humaneval+mbpp-t4-resample-agreement_selfconf-shared
 
 Writes into the run folder:
   fig_guarantee.{pdf,png}   realised test risk over calibration/test splits per target alpha,

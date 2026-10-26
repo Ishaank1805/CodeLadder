@@ -10,10 +10,12 @@ may use; hidden tests define correctness and are only used for labels/evaluation
   ``scripts/prepare_lcb.py`` into ``data/lcb/``. LeetCode problems run in "method"
   mode (``Solution().f(*args)``), AtCoder/Codeforces problems in "stdin" mode. Public
   tests are visible, private tests hidden. Tests are loaded lazily by ``prepare_task``.
+- ``bigcodebench``: BigCodeBench v0.1.4 from ``data/bcb/`` (``scripts/prepare_bcb.py``),
+  see :mod:`codeladder.bcb`: the first unit-test method is visible, all of them hidden.
 
-Note: a few EvalPlus tasks use custom output checkers (for example HumanEval/32);
-our generic comparison may disagree with the official evaluator on those. Final
-numbers should be cross-checked with ``evalplus.evaluate`` on accepted outputs.
+EvalPlus tasks with custom output checkers (for example HumanEval/32) are judged by
+:mod:`codeladder.oracles`; labels were cross-checked against ``evalplus.evaluate`` on
+1,530 programs before the main runs (docs/PREFLIGHT.md).
 """
 
 from __future__ import annotations

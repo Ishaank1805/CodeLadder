@@ -2,8 +2,10 @@
 
 paths:
   pools: data/pools          # cached generations + execution results, one JSON per (benchmark, tier, task)
-  llm_cache: data/llm_cache.sqlite
+  llm_cache: data/llm_cache          # one SQLite file per (tier, benchmark), single writer each
   results: results
+  stress: data/lcb/stress    # model-written stress inputs for stdin tasks (make-stress)
+  baselines: data/baselines  # generation for published baselines (make-selftests, make-traces)
 
 generation:
   n_samples: 20              # independent samples per task per tier
@@ -17,6 +19,34 @@ generation:
     # (the controller falls back to resampling when no chain exists, and logs it).
     parents: 20
     depth: 3                 # repair rounds per chain (stops early once visible tests pass)
+
+# Per-benchmark overrides of the generation settings above. LiveCodeBench problems are
+# longer and harder, so fewer samples and repair rounds keep the GPU budget realistic.
+generation_overrides:
+  livecodebench:
+    n_samples: 10
+    max_tokens: 2048
+    repair: {parents: 10, depth: 2}
+  bigcodebench:              # X18: same budget as LiveCodeBench
+    n_samples: 10
+    max_tokens: 2048
+    repair: {parents: 10, depth: 2}
+
+# Per-tier overrides (applied after the per-benchmark ones). The free API tier keeps to what the
+# controller uses at the top of the ladder (at most 8 draws) and to the daily quota: 8 samples,
+# no repair chains; its reasoning tokens count against max_tokens.
+tier_overrides:
+  # DeepSeek-Coder mostly declines to rate its code ("as an AI, I cannot execute code"; 40 to
+  # 95% of replies had no number), so its answer is prefilled with "Confidence (0-100): " and
+  # it only has to continue with the number.
+  d1: {conf_max_tokens: 8, conf_prefill: true}
+  d2: {conf_max_tokens: 8, conf_prefill: true}
+  d3: {conf_max_tokens: 8, conf_prefill: true}
+  api:
+    n_samples: 8
+    max_tokens: 4096
+    repair: {parents: 0, depth: 0}
+    conf_max_tokens: 512     # the confidence rating also comes after reasoning
 
 probes:
   n: 20                      # extra inputs for behavioural agreement (never the hidden tests)
@@ -43,4 +73,10 @@ evaluation:
   n_splits: 100
   calib_frac: 0.5
   lambda_grid: {start: 1.0, stop: 0.0, step: 0.05}
+  family: two_level          # shared: one threshold for all tiers (fixed-sequence testing)
+                             # two_level: escalation + final-tier thresholds (see two_level_method)
+  lambda_grid_2d: {start: 1.0, stop: 0.0, step: 0.1}
+  two_level_method: paths    # paths: Bonferroni over fixed escalation thresholds (all data)
+                             # pareto: Pareto Testing (half the calibration data orders configs)
+  escalation_thresholds: [1.01, 0.9, 0.7, 0.5]
   cost_metric: weighted_tokens   # weighted_tokens | tokens | energy_j | gpu_s

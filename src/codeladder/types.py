@@ -30,6 +30,14 @@ class Task:
     visible_ref_times: list[float] | None = None  # per-input reference runtimes (seconds)
     hidden_ref_times: list[float] | None = None
     oracle: str | None = None  # special checker name (see oracles.py), None = equality
+    mode: str = (
+        "function"  # function | method (LeetCode) | stdin (whole program) | bcb (unit tests)
+    )
+    time_limit_s: float | None = None  # per-test limit when there is no reference runtime
+    difficulty: str | None = None
+    source_path: str | None = None  # where lazily-loaded tests live (LiveCodeBench)
+    tests: str | None = None  # unit-test source (BigCodeBench: first method visible, all hidden)
+    probe_code: str | None = None  # model-written probe calls for agreement (BigCodeBench)
 
 
 @dataclass

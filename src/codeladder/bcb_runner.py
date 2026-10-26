@@ -1,7 +1,7 @@
 """BigCodeBench test runner, executed by the benchmark's own Python (``~/venvs/bcb``).
 
 Standalone (standard library plus whatever the task imports). Reads one JSON payload on
-stdin: {"code", "test", "methods", "probes", "method_timeout", "probe_timeout"}, runs in the
+stdin: {"code", "test", "methods", "probes", "load_timeout", "method_timeout", "probe_timeout"}, runs in the
 current directory (a fresh temporary directory chosen by the parent), and prints one JSON line:
 {"fatal": str|null, "detail": str, "methods": {name: {"status", "detail"}}, "probes": [str]}.
 
@@ -61,18 +61,62 @@ def _norm(x, depth=0):
     return re.sub(r" at 0x[0-9a-fA-F]+", "", type(x).__name__ + ":" + repr(x))[:2000]
 
 
+def _fence_signals():
+    """Generated code may only signal processes of its own session: no os.kill / killpg of the
+    model server or other processes of the same user on the node (psutil uses os.kill too).
+    Signal 0 (an existence check) stays allowed. Tests that mock these are unaffected."""
+    sid = os.getsid(0)
+    os.environ["BCB_SID"] = str(sid)
+    real_kill, real_killpg = os.kill, os.killpg
+
+    def ours(pid):
+        try:
+            return os.getsid(pid) == sid
+        except OSError:
+            return True  # no such process: let the real call report it
+
+    def kill(pid, sig):
+        if sig != 0 and (pid == -1 or (pid != 0 and not ours(abs(pid)))):
+            raise PermissionError(1, "Operation not permitted")
+        return real_kill(pid, sig)
+
+    def killpg(pgid, sig):
+        if sig != 0 and pgid != 0 and not ours(pgid):
+            raise PermissionError(1, "Operation not permitted")
+        return real_killpg(pgid, sig)
+
+    os.kill, os.killpg = kill, killpg
+
+
 def main():
+    _fence_signals()
     payload = json.loads(sys.stdin.read())
     out = {"fatal": None, "detail": "", "methods": {}, "probes": []}
     real_stdout = sys.stdout
     sys.stdout = io.StringIO()  # the candidate's prints must not corrupt the JSON line
     os.environ.setdefault("MPLBACKEND", "Agg")
     signal.signal(signal.SIGALRM, _alarm)
-    ns = {"__name__": "__bcb__"}
+    # Like BigCodeBench's own harness: solution and tests run as one module named __test__,
+    # registered in sys.modules (tests patch f"{__name__}.x"; multiprocessing pickles by module).
+    import types
+
+    module = types.ModuleType("__test__")
+    module.__dict__.update(
+        {
+            "__file__": "__test__.py",
+            "__package__": None,
+            "__doc__": None,
+            "sys": sys,
+            "os": os,
+            "environ": os.environ,
+        }  # fmt: skip
+    )
+    sys.modules["__test__"] = module
+    ns = module.__dict__
     try:
         signal.alarm(int(payload.get("load_timeout", 60)))
-        exec(compile(payload["code"], "solution.py", "exec"), ns)
-        exec(compile(payload["test"], "test.py", "exec"), ns)
+        full = payload["code"] + "\n" + payload["test"]
+        exec(compile(full, "__test__.py", "exec"), ns)
         signal.alarm(0)
     except SyntaxError as e:
         out["fatal"], out["detail"] = "syntax_error", str(e)
@@ -85,7 +129,7 @@ def main():
     if out["fatal"] is None:
         cls = ns.get("TestCases")
         names = payload.get("methods") or (
-            sorted(n for n in dir(cls) if n.startswith("test")) if cls else []
+            list(unittest.TestLoader().getTestCaseNames(cls)) if cls else []
         )
         for name in names:
             res = unittest.TestResult()

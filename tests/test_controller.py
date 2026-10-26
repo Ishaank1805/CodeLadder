@@ -89,3 +89,48 @@ def test_error_class_and_action_table():
     chain = {i: [cand("t1", i, visible=True, hidden=True, depth=1)] for i in range(4)}
     table = learn_action_table([[pool("t1", samples, chain)]])
     assert table["0|wrong_answer"] == "repair"  # repairs always fix; fresh samples never pass
+
+
+def test_score_variants():
+    import math
+
+    cs = [
+        cand("t1", 0, visible=True, hidden=True, sig="A"),
+        cand("t1", 1, visible=True, hidden=False, sig="B"),
+        cand("t1", 2, visible=False, hidden=False, sig="A"),
+    ]
+    cs[0].mean_logprob, cs[1].mean_logprob, cs[2].mean_logprob = -0.1, -1.0, -0.01
+    lp = phi_scores(cs, "logprob")
+    assert math.isclose(lp[0], math.exp(-0.1)) and math.isclose(lp[1], math.exp(-1.0))
+    assert lp[2] == 0.0  # failing a visible test always scores 0
+    assert phi_scores(cs, "visible") == [1.0, 1.0, 0.0]
+    out = run_task([pool("t1", cs)], Policy([0.8], n_init=3, max_draws=3, score="logprob"))
+    assert out.accepted is not None and out.accepted.sample_idx == 0
+
+
+def test_skipped_tier_is_never_drawn():
+    from conftest import cand, pool
+
+    from codeladder.controller import Policy, run_task
+
+    p1 = pool("t1", [cand("t1", i, visible=True, hidden=True) for i in range(4)])
+    p2 = pool("t2", [cand("t2", i, visible=True, hidden=True) for i in range(4)])
+    out = run_task([p1, p2], Policy([None, 0.5], n_init=2, max_draws=4))
+    assert out.tier_index == 1 and all(c.tier == "t2" for c in out.drawn)
+
+
+def test_lower_budget_makes_cheap_tiers_give_up_early():
+    from conftest import cand, pool
+
+    from codeladder.controller import Policy, run_task
+
+    p1 = pool("t1", [cand("t1", i, visible=False, hidden=False) for i in range(8)])
+    p2 = pool("t2", [cand("t2", i, visible=True, hidden=True) for i in range(8)])
+    full = run_task([p1, p2], Policy([0.5, 0.5], n_init=3, max_draws=8))
+    lean = run_task([p1, p2], Policy([0.5, 0.5], n_init=3, max_draws=8, lower_budget=2))
+    assert sum(c.tier == "t1" for c in full.drawn) == 8
+    assert sum(c.tier == "t1" for c in lean.drawn) == 2 and lean.tier_index == 1
+    # the last tier keeps the full budget
+    p3 = pool("t2", [cand("t2", i, visible=False, hidden=False) for i in range(8)])
+    out = run_task([p1, p3], Policy([0.5, 0.5], n_init=3, max_draws=8, lower_budget=2))
+    assert sum(c.tier == "t2" for c in out.drawn) == 8

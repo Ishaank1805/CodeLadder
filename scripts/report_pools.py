@@ -5,7 +5,7 @@ tasks with at least one correct sample, the silent-failure rate (passes visible 
 fails hidden ones), repair success, and token / latency / energy statistics.
 
     python scripts/report_pools.py                       # all benchmarks and tiers found
-    python scripts/report_pools.py --benchmarks humaneval mbpp --json results/pool_report.json
+    python scripts/report_pools.py --benchmarks humaneval mbpp --json results/analysis/pool_report.json
 """
 
 from __future__ import annotations

@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import re
 import sqlite3
 import threading
 import time
@@ -31,6 +33,26 @@ class Completion:
     # Per generated token: [logprob, entropy over the top-k alternatives, top-1 minus top-2
     # logprob]; only when requested with top_logprobs (Bayesian self-escalation baseline).
     token_stats: list[list[float]] | None = None
+    # Top alternatives of the first generated token, token text -> logprob (P(True) ratings).
+    first_top: dict[str, float] | None = None
+
+
+_CONTEXT = re.compile(
+    r"maximum context length is (\d+) tokens.*?\((\d+) in the messages, (\d+) in the completion\)",
+    re.S,
+)
+
+
+def _fitting_max_tokens(err: Exception, max_tokens: int, floor: int = 256) -> int | None:
+    """A smaller answer budget when a local server rejects the request as longer than its
+    context window (vLLM's 400 message); None for other errors or when too little room is left."""
+    if getattr(err, "status_code", None) != 400:
+        return None
+    m = _CONTEXT.search(str(err))
+    if not m:
+        return None
+    room = int(m.group(1)) - int(m.group(2)) - 16
+    return room if floor <= room < max_tokens else None
 
 
 class ChatClient(Protocol):
@@ -42,6 +64,8 @@ class ChatClient(Protocol):
         top_p: float,
         max_tokens: int,
         seed: int,
+        top_logprobs: int = 0,
+        continue_final: bool = False,
     ) -> Completion: ...
 
 
@@ -106,6 +130,9 @@ def _token_stats(tok: Any) -> list[float]:
     return [round(tok.logprob or 0.0, 4), round(ent, 4), round(margin, 4)]
 
 
+_CONTINUE = {"continue_final_message": True, "add_generation_prompt": False}
+
+
 class OpenAIChatClient:
     """Chat client for one tier (local vLLM/llama.cpp server or a free API)."""
 
@@ -118,7 +145,14 @@ class OpenAIChatClient:
         url = tier.resolve_base_url()
         # One client and rate limiter per key; a key that hits a limit rests until the server
         # says it may retry, and requests move on to the next key.
-        self._clients = [OpenAI(base_url=url, api_key=k, timeout=600) for k in tier.api_keys()]
+        # Local servers: no SDK-level retries, so a 500 reaches the loop in complete() at once
+        # (the SDK would otherwise repeat a failing full-length generation twice before the
+        # retry without logprobs). Free APIs keep the SDK's retries for transient errors.
+        sdk_retries = 0 if tier.api_key_env is None else 2
+        self._clients = [
+            OpenAI(base_url=url, api_key=k, timeout=600, max_retries=sdk_retries)
+            for k in tier.api_keys()
+        ]
         self._limiters = [_RateLimiter(tier.requests_per_minute) for _ in self._clients]
         self._rest_until = [0.0] * len(self._clients)
         self._next_key = 0
@@ -153,8 +187,18 @@ class OpenAIChatClient:
             self._rest_until[i] = time.time() + secs + 1
 
     def complete(
-        self, messages, *, temperature, top_p, max_tokens, seed, top_logprobs: int = 0
+        self,
+        messages,
+        *,
+        temperature,
+        top_p,
+        max_tokens,
+        seed,
+        top_logprobs: int = 0,
+        continue_final: bool = False,
     ) -> Completion:
+        """``continue_final``: the last message is a started assistant reply that the server
+        continues (vLLM ``continue_final_message``); local servers only."""
         params = {
             "temperature": temperature,
             "top_p": top_p,
@@ -163,11 +207,16 @@ class OpenAIChatClient:
         }
         if top_logprobs:
             params["top_logprobs"] = top_logprobs  # separate cache entries
+        if continue_final:
+            params["continue_final"] = True
         key = ResponseCache.key(self.tier.model, messages, params)
         if self.cache and (hit := self.cache.get(key)):
             return Completion(**{**hit, "cached": True})
         last_err: Exception | None = None
-        attempt = 0
+        attempt = rate_waits = 0
+        # Dropped after a server-side JSON failure (see below), or from the start with
+        # CODELADDER_NO_LOGPROBS=1 (re-runs of tasks known to hit that failure).
+        want_logprobs = os.environ.get("CODELADDER_NO_LOGPROBS") != "1"
         while attempt < self.retries:
             k = self._pick_key()
             self._limiters[k].wait()
@@ -176,8 +225,8 @@ class OpenAIChatClient:
             # basic parameters to them. The cache key still includes the seed, so
             # repeated samples stay distinct.
             local = self.tier.api_key_env is None
-            extra = {"seed": seed, "logprobs": True} if local else {}
-            if local and top_logprobs:
+            extra = {"seed": seed, "logprobs": want_logprobs} if local else {}
+            if local and top_logprobs and want_logprobs:
                 extra["top_logprobs"] = top_logprobs
             try:
                 resp = self._clients[k].chat.completions.create(
@@ -186,25 +235,52 @@ class OpenAIChatClient:
                     temperature=temperature,
                     top_p=top_p,
                     max_tokens=max_tokens,
-                    extra_body=self.tier.extra_params or None,
+                    extra_body=(
+                        {**(self.tier.extra_params or {}), **_CONTINUE}
+                        if continue_final
+                        else self.tier.extra_params or None
+                    ),
                     **extra,
                 )
             except Exception as e:  # network errors, 429s, server restarts
                 last_err = e
                 if getattr(e, "status_code", None) == 429:
                     self._rest(k, e)  # rate limit: not a failure, try another key
+                    rate_waits += 1
+                    if rate_waits > 500:  # hours of waiting: the request itself is refused
+                        raise
+                    continue
+                fit = _fitting_max_tokens(e, max_tokens)
+                if fit is not None:
+                    # The prompt plus the answer budget exceeds the server's context window
+                    # (a few BigCodeBench prompts carry a very long visible test): answer
+                    # within what is left. The response is still cached under the request's
+                    # original parameters, so reruns reuse it.
+                    max_tokens = fit
+                    attempt += 1
+                    continue
+                if local and want_logprobs and getattr(e, "status_code", None) == 500:
+                    # A -inf token logprob (fp16 underflow) makes the server's JSON invalid
+                    # and the same seeded request fails every time: retry without logprobs.
+                    want_logprobs = False
+                    attempt += 1
                     continue
                 attempt += 1
                 time.sleep(min(60, 2**attempt))
                 continue
             choice = resp.choices[0]
-            mean_lp, stats = None, None
+            mean_lp, stats, first = None, None, None
             lp = getattr(choice, "logprobs", None)
             if lp is not None and getattr(lp, "content", None):
                 vals = [t.logprob for t in lp.content if t.logprob is not None]
                 mean_lp = sum(vals) / len(vals) if vals else None
                 if top_logprobs:
                     stats = [_token_stats(t) for t in lp.content]
+                    first = {
+                        a.token: a.logprob
+                        for a in (lp.content[0].top_logprobs or [])
+                        if a.logprob is not None
+                    }
             usage = resp.usage
             comp = Completion(
                 text=choice.message.content or "",
@@ -214,6 +290,7 @@ class OpenAIChatClient:
                 mean_logprob=mean_lp,
                 started_at=started,
                 token_stats=stats,
+                first_top=first,
             )
             if self.cache:
                 self.cache.put(key, {k: v for k, v in comp.__dict__.items() if k != "cached"})

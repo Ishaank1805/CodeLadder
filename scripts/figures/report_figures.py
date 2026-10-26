@@ -35,6 +35,9 @@ import numpy as np  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from plot_results import AQUA, BLUE, INK, INK2, ORANGE  # noqa: E402
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+from codeladder.results import find_result, iter_runs  # noqa: E402
+
 YELLOW = "#eda100"  # categorical slot 4 of the reference palette (validated with slots 1 to 3)
 TIERS = {
     "t1": "1.5B",
@@ -63,14 +66,14 @@ def _save(fig, out: Path, name: str) -> None:
 
 
 def _load(root: Path, name: str) -> dict | None:
-    p = root / name / "summary.json"
+    p = find_result(root, name) / "summary.json"
     return json.loads(p.read_text()) if p.exists() else None
 
 
 def validity(root: Path, out: Path) -> None:
     pts = []
-    for p in root.glob("*/summary.json"):
-        s = json.loads(p.read_text())
+    for d in iter_runs(root):
+        s = json.loads((d / "summary.json").read_text())
         for c in s.get("calibrated", []):
             if c.get("certified_splits") and np.isfinite(c.get("mean_test_risk", np.nan)):
                 pts.append((c["alpha"], c["mean_test_risk"], c["violation_rate"]))
@@ -119,7 +122,7 @@ def baselines(root: Path, out: Path) -> None:
                 rows.append(
                     (f"CodeLadder {name}, {label}", c["violation_rate"], c["mean_solved"], True)
                 )
-        bp = root / f"baselines-humaneval+mbpp-{tiers}.json"
+        bp = find_result(root, f"baselines-humaneval+mbpp-{tiers}.json")
         if bp.exists():
             b = json.loads(bp.read_text())
             for k, name in (
@@ -165,7 +168,7 @@ def baselines(root: Path, out: Path) -> None:
 
 
 def shift(root: Path, out: Path) -> None:
-    p = root / f"livecodebench-t1-t2-t3-t4-{P}-shared-shift" / "shift.json"
+    p = find_result(root, f"livecodebench-t1-t2-t3-t4-{P}-shared-shift") / "shift.json"
     if not p.exists():
         return
     res = json.loads(p.read_text())
@@ -206,7 +209,7 @@ def shift(root: Path, out: Path) -> None:
 
 def repair(root: Path, out: Path) -> None:
     panels = [
-        (root / f"e4_repair_{k}.json", t)
+        (find_result(root, f"e4_repair_{k}.json"), t)
         for k, t in (("evalplus", "HumanEval+/MBPP+"), ("lcb", "LiveCodeBench"))
     ]
     panels = [(p, t) for p, t in panels if p.exists()]
@@ -291,7 +294,7 @@ def energy(root: Path, out: Path) -> None:
 
 
 def stdin(root: Path, out: Path) -> None:
-    p = root / "x2_stdin_signals.json"
+    p = find_result(root, "x2_stdin_signals.json")
     if not p.exists():
         return
     d = json.loads(p.read_text())
@@ -418,7 +421,7 @@ def economics(root: Path, out: Path) -> None:
     }  # fmt: skip  (real price ratios of the pairs, from tokens and model size)
     label = {"t1": "1.5B", "t2": "7B", "t3": "14B", "t4": "32B", "d1": "DS 1.3B", "api": "120B"}
     runs = []
-    for d in sorted(root.glob("economics-*-agreement_selfconf-k64-lb1")):
+    for d in iter_runs(root, "economics-*-agreement_selfconf-k64-lb1"):
         bench = d.name.split("-")[1]
         if bench in BENCH:
             runs.append((bench, "-".join(json.loads((d / "summary.json").read_text())["tiers"]),
@@ -649,7 +652,7 @@ def ptrue(root: Path, out: Path) -> None:
     """X12: how well each confidence signal separates correct from wrong visible-passing code."""
     d: dict = {}
     for p in sorted(
-        root.glob("signals_auroc*.json")
+        [*(root / "analysis").glob("signals_auroc*.json"), *root.glob("signals_auroc*.json")]
     ):  # one file per batch (ptrue.sh, bigcodebench.sh)
         for b, v in json.loads(p.read_text()).items():
             d.setdefault(b, {}).update(v)
@@ -686,7 +689,9 @@ def ptrue(root: Path, out: Path) -> None:
 
 
 def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else "results")
+    root = (
+        Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parents[2] / "results"
+    )
     out = root / "figures"
     figures = (validity, baselines, shift, repair, energy, stdin, conditional, router, economics,
                guaranteed, ci, oracle, ptrue)  # fmt: skip

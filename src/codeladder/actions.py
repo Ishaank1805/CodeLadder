@@ -39,33 +39,34 @@ def learn_action_policy(
 ) -> tuple[dict[str, str], dict[str, Any]]:
     """Table over ``action_keys`` contexts (all three levels): "repair" where the repair child
     of a failing candidate in that context is more often useful than a fresh sample of the
-    same tier, with at least ``min_n`` observed repairs; contexts with fewer are left out so
-    the controller backs off to a coarser level (or resamples)."""
-    fresh: dict[int, list[int]] = defaultdict(list)
+    same tier on the same problem, with at least ``min_n`` observed repairs; contexts with
+    fewer are left out so the controller backs off to a coarser level (or resamples).
+
+    The fresh-sample rate is matched per problem (the other samples of the same pool): a
+    repair is only considered after a failure, so comparing it with the tier's overall rate
+    would favour resampling on exactly the problems where both are hard."""
     rep: dict[str, list[int]] = defaultdict(list)
+    fresh: dict[str, list[float]] = defaultdict(list)
     for pools in task_pools:
         for t, pool in enumerate(pools):
-            fresh[t].extend(_reward(c, reward) for c in pool.samples)
+            rewards = [_reward(c, reward) for c in pool.samples]
             for s, chain in pool.repairs.items():
+                others = rewards[:s] + rewards[s + 1 :]
+                matched = float(np.mean(others)) if others else 0.0
                 prev = pool.samples[s]
                 for child in chain:
                     if not prev.passes_visible:  # only failing candidates are repaired
                         for key in action_keys(t, prev):
                             rep[key].append(_reward(child, reward))
+                            fresh[key].append(matched)
                     prev = child
     table, stats = {}, {}
     for key, outs in rep.items():
-        t = int(key.split("|")[0])
-        f = float(np.mean(fresh[t])) if fresh[t] else 0.0
-        r = float(np.mean(outs))
+        r, f = float(np.mean(outs)), float(np.mean(fresh[key]))
         stats[key] = {"n": len(outs), "repair": r, "fresh": f}
         if len(outs) >= min_n:
             table[key] = "repair" if r > f else "resample"
     return table, stats
-
-
-def _subset(rep: Replay, ids: np.ndarray) -> Replay:
-    return Replay(**{k: getattr(rep, k)[:, ids, :] for k in rep.__dataclass_fields__})
 
 
 def run_actions(
@@ -113,7 +114,7 @@ def run_actions(
             "learned_hidden": learn_action_policy(train, reward="hidden"),
         }
         variants: dict[str, tuple[Replay, str, Any]] = {
-            a: (_subset(r, rest), m, p) for a, (r, m, p) in fixed.items()
+            a: (r.take(rest), m, p) for a, (r, m, p) in fixed.items()
         }
         for name, (table, _stats) in tables.items():
             pols, method, paths = fam("adaptive", table)

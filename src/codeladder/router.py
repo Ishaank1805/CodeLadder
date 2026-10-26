@@ -58,8 +58,10 @@ def max_constraint(text: str) -> float:
 
 
 def meta_features(tasks: list[Task]) -> np.ndarray:
-    benches = ["humaneval", "mbpp", "livecodebench"]
-    modes = ["function", "method", "stdin"]
+    # Columns that are zero for a run's tasks get zero weight, so adding a benchmark leaves the
+    # routers of runs without it unchanged.
+    benches = ["humaneval", "mbpp", "livecodebench", "bigcodebench"]
+    modes = ["function", "method", "stdin", "bcb"]
     diffs = ["easy", "medium", "hard"]
     rows = []
     for t in tasks:
@@ -168,10 +170,6 @@ def routed_replay(
     return Replay(**arrs), paths, tiers
 
 
-def _subset(rep: Replay, ids: np.ndarray) -> Replay:
-    return Replay(**{k: getattr(rep, k)[:, ids, :] for k in rep.__dataclass_fields__})
-
-
 def run_router(
     task_pools: list[list[TierPool]],
     tasks: list[Task],
@@ -219,14 +217,14 @@ def run_router(
             }
             for t, name in enumerate(tier_names)
         }
-        s_rest = _subset(single, rest)
+        s_rest = single.take(rest)
         families = {"singles": (s_rest, s_paths)}
         r_rep, r_paths, r_tiers = routed_replay(s_rest, s_paths, pred, taus)
         families["router"] = (r_rep, r_paths)
         o_rep, o_paths, o_tiers = routed_replay(s_rest, s_paths, y[rest], taus)
         families["oracle_router"] = (o_rep, o_paths)
         if with_subsets:
-            families["subsets"] = (_subset(subsets, rest), b_paths)
+            families["subsets"] = (subsets.take(rest), b_paths)
         res: dict[str, Any] = {"seed": seed, "router_quality": quality, "families": {}}
         for fam, (rep, paths) in families.items():
             method = b_method if fam == "subsets" else "paths"

@@ -4,7 +4,7 @@ on mutated public inputs, agreement on stress inputs, and the adopted rule (stre
 failed check), with and without self-confidence. Also: how often a stress timeout is a true
 failure.
 
-    python scripts/analysis_stdin_signals.py --tiers t1 t2 t3 t4 d1 --json results/x2_stdin_signals.json
+    python scripts/analysis_stdin_signals.py --tiers t1 t2 t3 t4 d1 --json results/analysis/x2_stdin_signals.json
 """
 
 from __future__ import annotations
@@ -102,6 +102,7 @@ def main() -> int:
         print(f"{tier}: {len(rows)} candidates, timeouts {len(to)} ({out[tier]['stress_timeouts_hidden_wrong']} wrong); "
               + "  ".join(f"{k} {v:.3f}" for k, v in a.items()))  # fmt: skip
     if args.json:
+        Path(args.json).parent.mkdir(parents=True, exist_ok=True)
         Path(args.json).write_text(json.dumps(out, indent=2))
     return 0
 

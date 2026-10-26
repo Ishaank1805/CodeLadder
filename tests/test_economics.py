@@ -38,7 +38,8 @@ def test_ladder_pays_above_the_predicted_break_even():
     # spends 2 cheap draws per task, saves 2 top draws on half: break-even ratio 2
     assert 1.5 < be["predicted"] < 2.5
     assert be["measured"] in (2, 4)
-    r1 = next(x for x in out["rows"] if x["ratio"] == 1)
-    r16 = next(x for x in out["rows"] if x["ratio"] == 16)
-    assert r1["objective_subsets"] >= r1["objective_singles"] * 0.99
-    assert r16["objective_subsets"] < 0.7 * r16["objective_singles"]
+    r1 = next(x for x in out["rows"] if x["ratio"] == 1)["top"]
+    r16 = next(x for x in out["rows"] if x["ratio"] == 16)["top"]
+    assert r1["cost_ratio"] >= 0.99  # at equal prices the top model alone is as cheap
+    assert r16["cost_ratio"] < 0.7 and abs(r16["solved_ladder"] - r16["solved_baseline"]) < 0.02
+    assert be["asymptote"] < 0.7  # tends to 1 - cheap share (plus the cheap tokens' price)

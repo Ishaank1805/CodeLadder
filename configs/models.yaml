@@ -5,7 +5,7 @@
 # harness can find a server that SLURM placed on any node.
 #
 # params_b is used for the weighted-token cost metric (cost = tokens_out * params_b).
-# Model choices are provisional until the week-1 throughput test on Ada.
+# Evaluate one family at a time with --tiers (all enabled tiers is the default).
 
 tiers:
   - name: t1
@@ -36,17 +36,44 @@ tiers:
     max_concurrency: 8
     enabled: true
 
-  # Optional free API top rung. Disabled by default; free tiers change often, so set
-  # the model name after checking the provider's current free models.
+  # Second model family (generality check): DeepSeek-Coder instruct, 1.3B / 6.7B / 33B.
+  # Evaluate a family with --tiers d1 d2 d3 (or mix families, e.g. --tiers t1 d3).
+  - name: d1
+    model: deepseek-ai/deepseek-coder-1.3b-instruct
+    endpoint_file: ~/codeladder_endpoints/d1
+    params_b: 1.3
+    max_concurrency: 32
+    enabled: true
+
+  - name: d2
+    model: TheBloke/deepseek-coder-6.7B-instruct-AWQ
+    endpoint_file: ~/codeladder_endpoints/d2
+    params_b: 6.7
+    max_concurrency: 32
+    enabled: true
+
+  - name: d3
+    model: TheBloke/deepseek-coder-33B-instruct-AWQ
+    endpoint_file: ~/codeladder_endpoints/d3
+    params_b: 33
+    max_concurrency: 8
+    enabled: true
+
+  # Free API top rung (E8 / X3): gpt-oss-120b on Groq's free tier, a pool of keys read from
+  # GROQ_API_KEY_1.. in the environment or ~/.codeladder_keys on the cluster (never in git).
+  # params_b counts total parameters (MoE, about 5B active), the conservative choice.
+  - name: api
+    model: openai/gpt-oss-120b
+    base_url: https://api.groq.com/openai/v1
+    api_key_env: GROQ_API_KEY_*
+    params_b: 120
+    max_concurrency: 4
+    requests_per_minute: 25
+    extra_params: {reasoning_effort: low}
+    enabled: true
+
+  # Other free providers that work the same way:
   # Groq:      base_url https://api.groq.com/openai/v1                        key GROQ_API_KEY
   # Gemini:    base_url https://generativelanguage.googleapis.com/v1beta/openai/  key GEMINI_API_KEY
   # Cerebras:  base_url https://api.cerebras.ai/v1                            key CEREBRAS_API_KEY
   # OpenRouter base_url https://openrouter.ai/api/v1                          key OPENROUTER_API_KEY
-  - name: api
-    model: SET-ME
-    base_url: https://api.groq.com/openai/v1
-    api_key_env: GROQ_API_KEY
-    params_b: 70
-    max_concurrency: 2
-    requests_per_minute: 25
-    enabled: false

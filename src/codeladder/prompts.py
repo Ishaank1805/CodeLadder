@@ -15,7 +15,7 @@ SYSTEM = (
 
 
 def initial_messages(task: Task) -> list[dict[str, str]]:
-    if task.mode == "function":
+    if task.mode in ("function", "bcb"):
         user = (
             f"Complete the following Python function `{task.entry_point}`.\n\n"
             f"```python\n{task.prompt.rstrip()}\n```"
@@ -64,6 +64,15 @@ def _feedback_text(task: Task, feedback: dict[str, Any] | None) -> str:
     kind = feedback.get("kind")
     if task.mode == "stdin":
         return _stdin_feedback(feedback)
+    if task.mode == "bcb":
+        if kind == "test_failure":
+            return (
+                f"It fails this test:\n```python\n{feedback.get('test', '')}\n```\n"
+                f"{_clip(feedback.get('detail', ''))}"
+            )
+        return (
+            f"The code failed before running any test ({kind}): {_clip(feedback.get('detail', ''))}"
+        )
     fn = f"Solution().{task.entry_point}" if task.mode == "method" else task.entry_point
     call = f"{fn}({_args(feedback['input'])})" if "input" in feedback else None
     if kind == "wrong_answer":
@@ -121,10 +130,16 @@ def extract_code(text: str, task: Task) -> str:
     blocks = _FENCE.findall(text or "")
     code = max(blocks, key=len) if blocks else (text or "")
     code = code.strip("\n")
-    if task.mode == "function" and f"def {task.entry_point}" not in code:
+    if task.mode in ("function", "bcb") and f"def {task.entry_point}" not in code:
         # The model returned only a function body: graft it onto the prompt's signature.
         body = "\n".join(("    " + ln if ln.strip() else ln) for ln in code.splitlines())
         code = task.prompt.rstrip("\n") + "\n" + body
+    elif task.mode == "bcb":
+        # The prompt's imports belong to the task (BigCodeBench prepends them too).
+        header = task.prompt.split(f"def {task.entry_point}")[0].strip("\n")
+        missing = [ln for ln in header.splitlines() if ln.strip() and ln not in code]
+        if missing:
+            code = "\n".join(missing) + "\n" + code
     return code + "\n"
 
 

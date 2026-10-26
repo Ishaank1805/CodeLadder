@@ -5,7 +5,7 @@ the true risk of every threshold setting, and reports the best solved rate any s
 reaches under several risk caps. Comparing this with the calibrated results shows how much
 coverage the finite-sample guarantee costs.
 
-    python scripts/analysis_frontier.py results/<run> [results/<run> ...]
+    python scripts/analysis_frontier.py results/runs/<benchmarks>/<run> [...]
 """
 
 from __future__ import annotations

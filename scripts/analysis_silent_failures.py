@@ -1,7 +1,7 @@
 """Why do visible-passing candidates fail the hidden tests? First hidden failure type (too slow,
 wrong output, crash) per tier and problem kind, for the samples of each pool.
 
-    python scripts/analysis_silent_failures.py --benchmark livecodebench --tiers t1 t2 t3 t4 --json results/silent_failures_lcb.json
+    python scripts/analysis_silent_failures.py --benchmark livecodebench --tiers t4 --json results/analysis/silent_failures_lcb_t4.json
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from codeladder.config import load_experiment  # noqa: E402
 from codeladder.generate import _limits, _run, hidden_chunks  # noqa: E402
 from codeladder.scoring import visible_report  # noqa: E402
-from codeladder.tasks import load_tasks, prepare_task  # noqa: E402
+from codeladder.tasks import load_tasks, prepare_task, release_tests  # noqa: E402
 from codeladder.types import TierPool  # noqa: E402
 
 
@@ -55,7 +55,7 @@ def main() -> int:
                         err = "exception" if e.startswith("exception") else e
                         break
                 errs.append(err)
-            t.hidden_inputs, t.hidden_expected = [], None
+            release_tests(t)
             return (t.mode, errs)
 
         kinds: dict[str, Counter] = {}
@@ -71,6 +71,7 @@ def main() -> int:
                 + ", ".join(f"{k} {v / n:.0%}" for k, v in c.most_common())
             )
     if args.json:
+        Path(args.json).parent.mkdir(parents=True, exist_ok=True)
         Path(args.json).write_text(json.dumps(out, indent=2))
     return 0
 

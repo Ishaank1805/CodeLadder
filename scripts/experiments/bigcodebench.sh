@@ -9,7 +9,9 @@ B=bigcodebench
 K="--abstain-factor 64"
 specs=""
 for t in t1 t2 t3 t4 d1 d2 d3; do specs="$specs $B/$t"; done
-py scripts/show_results.py ratings $specs --json results/signals_auroc_bcb.json
+# Labels of BigCodeBench/790 and /1028 from pools generated before the 27 Oct fix.
+py scripts/relabel_bcb.py
+py scripts/show_results.py ratings $specs --json results/analysis/signals_auroc_bcb.json
 
 # Each model alone, with each confidence score.
 for s in agreement_selfconf agreement_ptrue agreement; do
@@ -45,7 +47,7 @@ cl route --benchmark $B --tiers t1 t2 t3 t4 $S $K $ALPHAS --subsets --tag=-k64
 
 # X14 paired bootstrap intervals for the headline comparisons.
 Q=resample-agreement_selfconf
-pair() { cl compare "results/$2" "results/$3" $ALPHAS --out "results/ci/$1.json"; }
+pair() { cl compare "$2" "$3" $ALPHAS --out "results/ci/$1.json"; }
 pair ladders-vs-selection-bcb $B-t1-t2-t3-t4-$Q-subsets-k64-lb1 $B-t1-t2-t3-t4-$Q-singles-k64
 pair all7-vs-qwen-selection-bcb $B-t1-d1-t2-d2-t3-t4-d3-$Q-singles-k64-all7 $B-t1-t2-t3-t4-$Q-singles-k64
 pair ptrue-vs-selfconf-selection-bcb $B-t1-t2-t3-t4-resample-agreement_ptrue-singles-k64 $B-t1-t2-t3-t4-$Q-singles-k64

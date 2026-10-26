@@ -4,7 +4,7 @@
 # python scripts/show_results.py ci results/ci/*.json. RESULTS.md: "X14 confidence intervals".
 source "$(dirname "$0")/common.sh"
 Q=resample-agreement_selfconf
-pair() { cl compare "results/$2" "results/$3" $ALPHAS --out "results/ci/$1.json"; }
+pair() { cl compare "$2" "$3" $ALPHAS --out "results/ci/$1.json"; }
 pair ladders-vs-selection-evalplus humaneval+mbpp-t1-t2-t3-t4-$Q-subsets-k64-lb1 humaneval+mbpp-t1-t2-t3-t4-$Q-singles-k64
 pair ladders-vs-selection-lcb livecodebench-t1-t2-t3-t4-$Q-subsets-k64-lb1 livecodebench-t1-t2-t3-t4-$Q-singles-k64
 pair twolevel-vs-selection-lcb livecodebench-t1-t2-t3-t4-$Q-two_level-k64-lb1 livecodebench-t1-t2-t3-t4-$Q-singles-k64

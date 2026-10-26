@@ -4,7 +4,6 @@
 # agreement alone. Needs DeepSeek ratings made with the prefilled answer (conf_prefill).
 # RESULTS.md: "X1 / X10 corrected".
 source "$(dirname "$0")/common.sh"
-py scripts/analysis_stdin_signals.py --tiers t1 t2 t3 t4 d1 d2 d3 --json results/x2_stdin_signals.json
 py scripts/show_results.py ratings humaneval/d1 humaneval/d2 humaneval/d3 mbpp/d1 mbpp/d2 mbpp/d3 \
   livecodebench/d1 livecodebench/d2 livecodebench/d3 humaneval/t3
 for s in agreement_selfconf agreement; do

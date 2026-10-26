@@ -82,3 +82,27 @@ def test_huge_outputs_are_fingerprinted_with_python_number_semantics():
     assert outs[0][0] == "H"  # too big to ship: fingerprint
     assert outputs_match(outs[0], outs[1])  # 3.0 == 3, as in Python
     assert not outputs_match(outs[0], outs[2])
+
+
+def test_timeout_kills_the_whole_process_group(tmp_path):
+    import subprocess
+    import sys
+    import time
+
+    from codeladder.executor import _limits, run_isolated
+
+    marker = tmp_path / "pid"
+    code = (
+        "import subprocess, time\n"
+        f"p = subprocess.Popen(['sleep', '30'])\nopen({str(marker)!r}, 'w').write(str(p.pid))\n"
+        "time.sleep(30)\n"
+    )
+    try:
+        run_isolated([sys.executable, "-c", code], timeout=2, preexec_fn=_limits(512, 10))
+        raise AssertionError("expected a timeout")
+    except subprocess.TimeoutExpired:
+        pass
+    pid = int(marker.read_text())
+    time.sleep(0.2)
+    alive = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True)
+    assert alive.stdout.strip() in ("", "Z"), "the grandchild outlived the timeout"

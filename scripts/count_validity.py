@@ -8,12 +8,18 @@ import json
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from codeladder.results import iter_runs  # noqa: E402
+
 
 def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else "results")
+    root = (
+        Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parents[1] / "results"
+    )
     runs = calibrations = 0
     worst, where = 0.0, None
-    for p in sorted(root.glob("*/summary.json")):
+    for d in iter_runs(root):
+        p = d / "summary.json"
         s = json.loads(p.read_text())
         rows = [
             c

@@ -44,7 +44,8 @@ def test_rotates_keys_on_rate_limits(monkeypatch):
     calls = []
 
     class FakeOpenAI:
-        def __init__(self, base_url, api_key, timeout):
+        def __init__(self, base_url, api_key, timeout, max_retries):
+            assert max_retries == 2  # free APIs keep the SDK's retries
             self.key = api_key
             self.chat = type("Ch", (), {"completions": self})()
 
@@ -74,3 +75,62 @@ def test_rotates_keys_on_rate_limits(monkeypatch):
         client.complete(
             [{"role": "user", "content": "z"}], temperature=0, top_p=1, max_tokens=5, seed=9
         )
+
+
+def test_server_json_failure_retries_without_logprobs(monkeypatch):
+    import sys
+    import types
+
+    seen = []
+
+    class ServerError(Exception):
+        status_code = 500
+
+    class FakeOpenAI:
+        def __init__(self, base_url, api_key, timeout, max_retries):
+            assert max_retries == 0  # local server: a 500 reaches the fallback at once
+            self.chat = type("Ch", (), {"completions": self})()
+
+        def create(self, **kw):
+            seen.append(kw.get("logprobs"))
+            if kw.get("logprobs"):
+                raise ServerError("Out of range float values are not JSON compliant")
+            return _Resp("ok")
+
+    monkeypatch.setitem(sys.modules, "openai", types.SimpleNamespace(OpenAI=FakeOpenAI))
+    tier = TierConfig(name="t", model="m", params_b=1, base_url="http://x")
+    out = llm.OpenAIChatClient(tier).complete(
+        [{"role": "user", "content": "x"}], temperature=0, top_p=1, max_tokens=5, seed=1
+    )
+    assert out.text == "ok" and seen == [True, False] and out.mean_logprob is None
+    # Known-bad tasks can skip the failing first attempt.
+    seen.clear()
+    monkeypatch.setenv("CODELADDER_NO_LOGPROBS", "1")
+    out = llm.OpenAIChatClient(tier).complete(
+        [{"role": "user", "content": "y"}], temperature=0, top_p=1, max_tokens=5, seed=2
+    )
+    assert out.text == "ok" and seen == [False]
+
+
+def test_continue_final_sends_vllm_prefill_flags(monkeypatch):
+    import sys
+    import types
+
+    seen = {}
+
+    class FakeOpenAI:
+        def __init__(self, base_url, api_key, timeout, max_retries):
+            self.chat = type("Ch", (), {"completions": self})()
+
+        def create(self, **kw):
+            seen.update(kw)
+            return _Resp("88")
+
+    monkeypatch.setitem(sys.modules, "openai", types.SimpleNamespace(OpenAI=FakeOpenAI))
+    tier = TierConfig(name="d1", model="m", params_b=1, base_url="http://x")
+    client = llm.OpenAIChatClient(tier)
+    msgs = [{"role": "user", "content": "x"}, {"role": "assistant", "content": "Confidence: "}]
+    client.complete(msgs, temperature=0, top_p=1, max_tokens=5, seed=0, continue_final=True)
+    assert seen["extra_body"] == {"continue_final_message": True, "add_generation_prompt": False}
+    client.complete(msgs, temperature=0, top_p=1, max_tokens=5, seed=0)
+    assert seen["extra_body"] is None

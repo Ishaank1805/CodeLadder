@@ -45,9 +45,24 @@ def test_methods_and_source():
     assert "test_case_2" not in method_source(TESTS, "test_case_1")
 
 
+def test_methods_only_from_testcases_and_multiline_signatures():
+    tests = (
+        "import unittest\n"
+        "class TestCases(unittest.TestCase):\n"
+        "    def test_b(self):\n        pass\n"
+        "    def test_a(\n        self, mock_x=None\n    ):\n        pass\n"
+        "    def helper(self):\n        pass\n"
+        "class OtherCases(unittest.TestCase):\n"
+        "    def test_other(self):\n        pass\n"
+    )
+    assert unit_test_methods(tests) == ["test_b", "test_a"]
+    assert "mock_x" in method_source(tests, "test_a")
+    assert unit_test_methods("    def test_x(self):\n  oops(") == ["test_x"]  # unparsable
+
+
 def test_runner_reports_each_method_and_probes():
     res = run_bcb(GOOD, TESTS, None, PROBES)
-    assert res["fatal"] is None
+    assert res["fatal"] is None, res
     assert {m: r["status"] for m, r in res["methods"].items()} == dict.fromkeys(
         unit_test_methods(TESTS), "pass"
     )
@@ -62,7 +77,7 @@ def test_runner_reports_each_method_and_probes():
 def test_candidate_fields_split_visible_and_hidden():
     task = _task()
     good = evaluate_bcb(task, GOOD, {})
-    assert good["visible_pass_rate"] == 1.0 and good["hidden_pass"] and good["signature"]
+    assert good["visible_pass_rate"] == 1.0 and good["hidden_pass"] and good["signature"], good
     bug = evaluate_bcb(task, NEG_BUG, {})  # passes the visible test, fails a hidden one
     assert bug["visible_pass_rate"] == 1.0 and not bug["hidden_pass"]
     assert bug["signature"] != good["signature"]  # the probes tell them apart
@@ -96,3 +111,82 @@ def test_make_probes_keeps_compiling_programs(tmp_path):
     stats = make_bcb_probes([ok, bad], Writer(), out_path=out, workers=2)
     assert stats == {"tasks": 2, "with_probes": 1}
     assert "def probes()" in json.loads(out.read_text())["BigCodeBench/x"]
+
+
+def test_runner_matches_the_official_harness():
+    # tests that patch via __name__, a class attribute named test_*, multiprocessing by module
+    code = (
+        "from random import randint\nimport multiprocessing\n"
+        "def _sq(x):\n    return x * x\n"
+        "def task_func(n):\n"
+        "    with multiprocessing.get_context('fork').Pool(2) as p:\n"
+        "        return [randint(0, 9)] + p.map(_sq, range(n))\n"
+    )
+    tests = (
+        "import unittest\nfrom unittest.mock import patch\n"
+        "class TestCases(unittest.TestCase):\n"
+        "    test_data_dir = 'mnt/data'\n"
+        "    @patch(__name__ + '.randint', return_value=7)\n"
+        "    def test_case_1(self, mock_randint):\n"
+        "        self.assertEqual(task_func(3), [7, 0, 1, 4])\n"
+    )
+    res = run_bcb(code, tests)
+    assert res["fatal"] is None, res
+    assert res["methods"] == {"test_case_1": {"status": "pass", "detail": ""}}, res
+
+
+def test_generation_stops_when_the_server_is_gone(tmp_path):
+    from codeladder.generate import generate_pools
+
+    class Dead:
+        calls = 0
+
+        def complete(self, messages, **kw):
+            Dead.calls += 1
+            raise RuntimeError("Connection error.")
+
+    tasks = []
+    for i in range(40):
+        t = _task()
+        t.task_id = f"BigCodeBench/{i}"
+        tasks.append(t)
+    cfg = {"paths": {"pools": str(tmp_path)}, "generation": {"n_samples": 2, "temperature": 0.8,
+           "top_p": 0.95, "max_tokens": 64, "seed": 0, "repair": {"parents": 0, "depth": 0}},
+           "probes": {"n": 0, "seed": 0}, "execution": {}}  # fmt: skip
+    written = generate_pools(tasks, "t1", Dead(), cfg, workers=2, max_consecutive_failures=5)
+    assert written == [] and Dead.calls < 60  # stopped early instead of 40 tasks x 3 attempts
+
+
+def test_generated_code_cannot_signal_processes_outside_its_session():
+    import signal
+    import subprocess
+
+    outside = subprocess.Popen(["sleep", "41.5"])  # stands in for the model server
+    code = (
+        "import os, signal, subprocess, time\n"
+        f"VICTIM = {outside.pid}\n"
+        "def task_func():\n"
+        "    blocked = 0\n"
+        "    try:\n"
+        "        os.kill(VICTIM, signal.SIGTERM)\n"
+        "    except PermissionError:\n"
+        "        blocked += 1\n"
+        "    subprocess.run(['pkill', '-f', 'sleep 41.5'])\n"
+        "    subprocess.run(['kill', str(VICTIM)], stderr=subprocess.DEVNULL)\n"
+        "    subprocess.run(['killall', 'sleep'], stderr=subprocess.DEVNULL)\n"
+        "    own = subprocess.Popen(['sleep', '30'])\n"
+        "    os.kill(own.pid, signal.SIGTERM)\n"  # its own child: allowed
+        "    own.wait(timeout=5)\n"
+        "    return blocked\n"
+    )
+    tests = (
+        "import unittest\nclass TestCases(unittest.TestCase):\n"
+        "    def test_case_1(self):\n        self.assertEqual(task_func(), 1)\n"
+    )
+    try:
+        res = run_bcb(code, tests)
+        assert res["methods"]["test_case_1"]["status"] == "pass", res
+        assert outside.poll() is None  # still running
+    finally:
+        outside.send_signal(signal.SIGKILL)
+        outside.wait()

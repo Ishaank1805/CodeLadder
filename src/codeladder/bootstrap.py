@@ -34,11 +34,7 @@ def load_run(path: str | Path, cfg: dict[str, Any]) -> tuple[Replay, dict[str, A
         if len(configs) != rep.loss.shape[0]:
             raise ValueError(f"{p}: settings do not match the current configuration")
         setup.update(method=s.get("calibration_method", method), paths=paths)
-    return rep, setup | {"n_tasks": s["n_tasks"], "name": p.name}
-
-
-def _take(rep: Replay, idx: np.ndarray) -> Replay:
-    return Replay(**{k: getattr(rep, k)[:, idx, :] for k in rep.__dataclass_fields__})
+    return rep, setup | {"n_tasks": s["n_tasks"], "task_ids": s.get("task_ids"), "name": p.name}
 
 
 def compare(
@@ -56,6 +52,8 @@ def compare(
     rep_b, sb = load_run(run_b, cfg)
     if sa["n_tasks"] != sb["n_tasks"]:
         raise ValueError(f"different task sets: {sa['n_tasks']} against {sb['n_tasks']}")
+    if sa["task_ids"] and sb["task_ids"] and sa["task_ids"] != sb["task_ids"]:
+        raise ValueError("the runs replay different tasks or a different task order")
     n = sa["n_tasks"]
     rng = np.random.default_rng(seed)
     out: dict[str, Any] = {"a": sa["name"], "b": sb["name"], "n_tasks": n, "n_boot": n_boot,
@@ -71,8 +69,8 @@ def compare(
         d_solved, d_cov, ratio = [], [], []
         for b in range(n_boot):
             idx = rng.integers(0, n, size=n)
-            ra = summary(_take(rep_a, idx), sa, a, 10_000 + b)
-            rb = summary(_take(rep_b, idx), sb, a, 10_000 + b)
+            ra = summary(rep_a.take(idx), sa, a, 10_000 + b)
+            rb = summary(rep_b.take(idx), sb, a, 10_000 + b)
             if not ra["certified_splits"] or not rb["certified_splits"]:
                 continue
             d_solved.append(ra["mean_solved"] - rb["mean_solved"])

@@ -3,8 +3,8 @@
 # repair-or-resample policy. RESULTS.md: "E4 repair versus resample, all four tiers",
 # "E7 ablation, repair depth", "X4 learned repair-or-resample policy".
 source "$(dirname "$0")/common.sh"
-py scripts/analysis_repair.py --benchmarks humaneval mbpp --json results/e4_repair_evalplus.json
-py scripts/analysis_repair.py --benchmarks livecodebench --json results/e4_repair_lcb.json
+py scripts/analysis_repair.py --benchmarks humaneval mbpp --json results/analysis/e4_repair_evalplus.json
+py scripts/analysis_repair.py --benchmarks livecodebench --json results/analysis/e4_repair_lcb.json
 for d in 2 3; do
   for a in repair adaptive; do
     for tiers in t2 t3 "t1 t2 t3"; do

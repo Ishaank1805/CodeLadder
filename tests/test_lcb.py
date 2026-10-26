@@ -90,3 +90,41 @@ def test_loader_and_labels_method(tmp_path):
     assert "class Solution" in initial_messages(task)[1]["content"]
     code = extract_code("```python\n" + METHOD_OK + "```", task)
     assert code.startswith("class Solution")  # no grafting for non-function modes
+
+
+def test_repair_feedback_is_clipped_for_huge_inputs():
+    from codeladder.prompts import feedback_text
+    from codeladder.types import Task
+
+    task = Task(task_id="x", benchmark="livecodebench", prompt="p", entry_point="f", reference=None,
+                visible_inputs=[], hidden_inputs=[], mode="method")  # fmt: skip
+    fb = {
+        "kind": "wrong_answer",
+        "input": [repr(list(range(50_000)))],
+        "expected": ["i", "1"],
+        "got": ["i", "2"],
+    }
+    text = feedback_text(task, fb)
+    assert len(text) < 8100 and "more characters" in text
+    small = {"kind": "wrong_answer", "input": ["[1, 2]"], "expected": ["i", "1"], "got": ["i", "2"]}
+    assert "more characters" not in feedback_text(task, small)
+
+
+def test_release_tests_makes_prepare_reload(tmp_path):
+    from test_pipeline import toy_tasks
+
+    from codeladder.tasks import prepare_task, release_tests
+
+    task = toy_tasks()[0]  # loader-provided tests are kept
+    n = len(task.hidden_inputs)
+    release_tests(task)
+    assert len(task.hidden_inputs) == n and task.visible_expected is not None
+
+    _write_lcb(tmp_path, "stdin")
+    lcb = load_livecodebench(tmp_path)[0]
+    prepare_task(lcb)
+    n_vis, n_hid = len(lcb.visible_inputs), len(lcb.hidden_inputs)
+    release_tests(lcb)
+    assert lcb.hidden_inputs == [] and lcb.visible_expected is None
+    prepare_task(lcb)  # reloaded from disk instead of being treated as prepared
+    assert (len(lcb.visible_inputs), len(lcb.hidden_inputs)) == (n_vis, n_hid) and n_hid > 0
