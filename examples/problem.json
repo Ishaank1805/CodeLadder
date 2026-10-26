@@ -1,0 +1,9 @@
+{
+  "prompt": "def second_largest(numbers: list[int]) -> int | None:\n    \"\"\"Return the second largest distinct value in numbers, or None if there is none.\n    >>> second_largest([3, 1, 4, 4])\n    3\n    >>> second_largest([7, 7])\n    \"\"\"\n",
+  "entry_point": "second_largest",
+  "tests": [
+    {"input": [[3, 1, 4, 4]], "output": 3},
+    {"input": [[7, 7]], "output": null},
+    {"input": [[-2, -5, -1]], "output": -2}
+  ]
+}

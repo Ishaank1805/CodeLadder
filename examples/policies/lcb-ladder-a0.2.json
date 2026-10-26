@@ -1,0 +1,36 @@
+{
+  "source_run": "livecodebench-t1-t2-t3-t4-resample-agreement_selfconf-subsets-k64-lb1",
+  "alpha": 0.2,
+  "delta": 0.1,
+  "calibration_tasks": 1054,
+  "setting": [
+    "t3+t4",
+    0.9,
+    0.2
+  ],
+  "tiers": [
+    "t1",
+    "t2",
+    "t3",
+    "t4"
+  ],
+  "thresholds": [
+    null,
+    null,
+    0.9,
+    0.2
+  ],
+  "score": "agreement_selfconf",
+  "action": "resample",
+  "n_init": 3,
+  "max_draws": 8,
+  "lower_budget": 1,
+  "calibration": {
+    "risk": 0.15844402277039848,
+    "coverage": 0.6347248576850095,
+    "solved": 0.476280834914611,
+    "mean_cost": 49399.37362428842,
+    "certified_settings": 362
+  },
+  "guarantee": "With probability at least 0.90 over the 1054 calibration tasks, the share of new tasks (exchangeable with them) that end with accepted but wrong code is at most 0.2."
+}

@@ -1,0 +1,26 @@
+{
+  "source_run": "humaneval+mbpp-api-resample-agreement_selfconf-shared-k64",
+  "alpha": 0.1,
+  "delta": 0.1,
+  "calibration_tasks": 542,
+  "setting": "lambda=0.75",
+  "tiers": [
+    "api"
+  ],
+  "thresholds": [
+    0.75
+  ],
+  "score": "agreement_selfconf",
+  "action": "resample",
+  "n_init": 3,
+  "max_draws": 8,
+  "lower_budget": null,
+  "calibration": {
+    "risk": 0.08118081180811808,
+    "coverage": 0.8394833948339483,
+    "solved": 0.7583025830258303,
+    "mean_cost": 131884.91512915128,
+    "certified_settings": 7
+  },
+  "guarantee": "With probability at least 0.90 over the 542 calibration tasks, the share of new tasks (exchangeable with them) that end with accepted but wrong code is at most 0.1."
+}
