@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CodeLadder demo</title>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --ink: #1d2330; --ink2: #545d6e; --muted: #8a92a3;
+  --line: #e2e5eb; --accent: #2a6fdb; --accent-soft: #e6eefc;
+  --ok: #1f8a4c; --ok-soft: #e3f4ea; --bad: #c2412d; --bad-soft: #fbe9e6;
+  --warn: #a86b00; --warn-soft: #fbf1dc; --code-bg: #f3f4f7;
+  --radius: 10px; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12151b; --panel: #1a1e26; --ink: #e7eaf0; --ink2: #b3bac7; --muted: #7f8899;
+    --line: #2b313d; --accent: #6a9df0; --accent-soft: #1f2b40;
+    --ok: #4cc283; --ok-soft: #173025; --bad: #f07a65; --bad-soft: #3a1f1a;
+    --warn: #e0a83a; --warn-soft: #3a2e14; --code-bg: #141821;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+header { padding: 18px 24px; border-bottom: 1px solid var(--line); background: var(--panel);
+  display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+header h1 { margin: 0; font-size: 20px; letter-spacing: .2px; }
+header p { margin: 0; color: var(--ink2); }
+.layout { display: grid; grid-template-columns: 360px 1fr; gap: 18px; padding: 18px 24px;
+  max-width: 1500px; margin: 0 auto; }
+@media (max-width: 960px) { .layout { grid-template-columns: 1fr; padding: 14px 16px; } }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 14px 16px; }
+aside .card + .card, .stage > * + * { margin-top: 14px; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted);
+  margin: 0 0 10px; font-weight: 600; }
+select, input, textarea, button { font: inherit; color: var(--ink); }
+select, input[type=search], input[type=text], textarea { width: 100%; padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+textarea { font-family: var(--mono); font-size: 13px; min-height: 90px; resize: vertical; }
+label { display: block; font-size: 13px; color: var(--ink2); margin: 10px 0 4px; }
+.tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+.tab { flex: 1; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--bg); cursor: pointer; text-align: center; color: var(--ink2); }
+.tab[aria-selected=true] { background: var(--accent-soft); color: var(--accent);
+  border-color: var(--accent); font-weight: 600; }
+.tasklist { list-style: none; margin: 8px 0 0; padding: 0; max-height: 260px; overflow: auto;
+  border: 1px solid var(--line); border-radius: 8px; }
+.tasklist li { padding: 7px 10px; border-bottom: 1px solid var(--line); cursor: pointer;
+  display: flex; justify-content: space-between; gap: 8px; font-size: 14px; }
+.tasklist li:last-child { border-bottom: 0; }
+.tasklist li:hover { background: var(--accent-soft); }
+.tasklist li[aria-selected=true] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.tasklist li.noreplay { color: var(--muted); }
+.badge { font-size: 11px; padding: 2px 7px; border-radius: 999px; background: var(--code-bg);
+  color: var(--ink2); white-space: nowrap; }
+.badge.hard { background: var(--bad-soft); color: var(--bad); }
+.badge.medium { background: var(--warn-soft); color: var(--warn); }
+.badge.easy { background: var(--ok-soft); color: var(--ok); }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.row > * { flex: 1; }
+.radio { display: flex; gap: 6px; }
+.radio label { margin: 0; flex: 1; border: 1px solid var(--line); border-radius: 8px; padding: 7px;
+  text-align: center; cursor: pointer; color: var(--ink2); }
+.radio input { display: none; }
+.radio input:checked + span { color: var(--accent); font-weight: 600; }
+.radio label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+button.run { width: 100%; margin-top: 12px; padding: 11px; border: 0; border-radius: 8px;
+  background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; font-size: 15px; }
+button.run:disabled { opacity: .55; cursor: default; }
+.policy-meta { font-size: 13px; color: var(--ink2); margin-top: 10px; }
+.policy-meta b { color: var(--ink); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.tierchip { font-size: 12px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--line);
+  background: var(--bg); }
+.tierchip.off { opacity: .45; text-decoration: line-through; }
+pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-family: var(--mono);
+  font-size: 12.5px; background: var(--code-bg); border-radius: 8px; padding: 10px 12px;
+  max-height: 260px; overflow: auto; }
+.problem h3 { margin: 0 0 8px; font-size: 16px; }
+.lane { display: grid; grid-template-columns: 170px 1fr; gap: 12px; padding: 10px 0;
+  border-bottom: 1px dashed var(--line); align-items: start; }
+.lane:last-child { border-bottom: 0; }
+.lane.skipped { opacity: .4; }
+.lane.active .lane-name { color: var(--accent); }
+.lane-name { font-weight: 600; }
+.lane-sub { font-size: 12px; color: var(--muted); }
+.cands { display: flex; flex-wrap: wrap; gap: 8px; min-height: 34px; }
+.cand { width: 92px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 7px;
+  background: var(--bg); cursor: pointer; font-size: 12px; position: relative;
+  animation: pop .25s ease-out; }
+@keyframes pop { from { transform: scale(.85); opacity: 0; } to { transform: none; opacity: 1; } }
+.cand .k { color: var(--ink2); }
+.cand.fail { border-color: var(--bad); background: var(--bad-soft); }
+.cand.best { outline: 2px solid var(--warn); }
+.cand.accepted { outline: 3px solid var(--ok); background: var(--ok-soft); }
+.bar { height: 6px; background: var(--line); border-radius: 3px; margin-top: 5px; position: relative; overflow: visible; }
+.bar > i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); border-radius: 3px; }
+.bar > b { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--ink); }
+.lane-status { font-size: 12px; margin-top: 4px; color: var(--ink2); }
+.narr { list-style: none; margin: 0; padding: 0; max-height: 280px; overflow: auto; font-size: 14px; }
+.narr li { padding: 6px 0; border-bottom: 1px solid var(--line); }
+.narr li:last-child { border-bottom: 0; }
+.narr .t { color: var(--muted); font-size: 12px; margin-right: 6px; font-family: var(--mono); }
+.verdict { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+.verdict .big { font-size: 22px; font-weight: 700; }
+.verdict .big.ok { color: var(--ok); } .verdict .big.abs { color: var(--warn); }
+.stat { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; min-width: 120px; }
+.stat .v { font-size: 18px; font-weight: 700; } .stat .l { font-size: 12px; color: var(--muted); }
+.pill { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; }
+.pill.ok { background: var(--ok-soft); color: var(--ok); } .pill.bad { background: var(--bad-soft); color: var(--bad); }
+.pill.na { background: var(--code-bg); color: var(--ink2); }
+.guarantee { margin-top: 12px; padding: 10px 12px; border-left: 3px solid var(--accent);
+  background: var(--accent-soft); border-radius: 6px; font-size: 14px; }
+.drawer { position: fixed; right: 0; top: 0; bottom: 0; width: min(560px, 100%); background: var(--panel);
+  border-left: 1px solid var(--line); box-shadow: -8px 0 24px rgba(0,0,0,.15); padding: 18px;
+  transform: translateX(105%); transition: transform .2s ease; overflow: auto; z-index: 10; }
+.drawer.open { transform: none; }
+.drawer pre { max-height: none; }
+.close { float: right; background: none; border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+.empty { color: var(--muted); font-size: 14px; }
+.err { color: var(--bad); }
+.legend { font-size: 12px; color: var(--muted); display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; }
+.legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; border: 1px solid var(--line); }
+.legend .lf::before { background: var(--bad-soft); border-color: var(--bad); }
+.legend .lb::before { outline: 2px solid var(--warn); }
+.legend .la::before { background: var(--ok-soft); border-color: var(--ok); }
+</style>
+</head>
+<body>
+<header>
+  <h1>CodeLadder</h1>
+  <p>Certified code generation: a ladder of open models that answers only when its risk is provably low.</p>
+</header>
+<main class="layout">
+  <aside>
+    <div class="card">
+      <h2>1 · Certified policy</h2>
+      <select id="policy" aria-label="Policy"></select>
+      <div class="chips" id="policyTiers"></div>
+      <div class="policy-meta" id="policyMeta"></div>
+    </div>
+    <div class="card">
+      <h2>2 · Problem</h2>
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" id="tabBench" aria-selected="true">Benchmark task</button>
+        <button class="tab" role="tab" id="tabOwn" aria-selected="false">Your own</button>
+      </div>
+      <div id="paneBench">
+        <select id="bench" aria-label="Benchmark"></select>
+        <input type="search" id="search" placeholder="Search task id (e.g. HumanEval/32)" style="margin-top:8px">
+        <ul class="tasklist" id="tasks"></ul>
+      </div>
+      <div id="paneOwn" hidden>
+        <label for="ownPrompt">Function signature and docstring</label>
+        <textarea id="ownPrompt">def second_largest(numbers: list[int]) -> int | None:
+    """Return the second largest distinct value, or None if there is none."""
+</textarea>
+        <label for="ownEntry">Function name</label>
+        <input type="text" id="ownEntry" value="second_largest">
+        <label for="ownTests">Visible tests (JSON: input arguments, expected output)</label>
+        <textarea id="ownTests">[{"input": [[3, 1, 4, 4]], "output": 3},
+ {"input": [[7, 7]], "output": null},
+ {"input": [[-2, -5, -1]], "output": -2}]</textarea>
+        <p class="empty">Your own problem runs live against the policy's models.</p>
+      </div>
+    </div>
+    <div class="card">
+      <h2>3 · Run</h2>
+      <div class="radio" role="radiogroup" aria-label="Mode">
+        <label><input type="radio" name="mode" value="replay" checked><span>Replay (cached)</span></label>
+        <label><input type="radio" name="mode" value="live"><span>Live (models)</span></label>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div><label for="perm">Sample order</label>
+          <select id="perm"><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
+        <div><label for="speed">Pace</label>
+          <select id="speed"><option value="700">Narrated</option><option value="250" selected>Normal</option><option value="0">Instant</option></select></div>
+      </div>
+      <button class="run" id="run">Run the ladder</button>
+    </div>
+  </aside>
+  <section class="stage">
+    <div class="card problem" id="problemCard">
+      <h3 id="problemTitle">Pick a policy and a problem</h3>
+      <pre id="problemText" class="empty">The ladder tries the cheapest model first. A candidate is accepted only if it passes the checks and its score reaches the threshold certified for this rung; otherwise the ladder resamples, repairs, escalates to a larger model, or abstains.</pre>
+    </div>
+    <div class="card">
+      <h2>The ladder</h2>
+      <div id="ladder"><p class="empty">No run yet.</p></div>
+      <div class="legend"><span class="lf">fails a visible test</span><span class="lb">best so far</span><span class="la">accepted</span><span>bar: score, tick: certified threshold</span></div>
+    </div>
+    <div class="card">
+      <h2>What happened</h2>
+      <ol class="narr" id="narr"></ol>
+    </div>
+    <div class="card" id="resultCard" hidden>
+      <h2>Result</h2>
+      <div class="verdict" id="verdict"></div>
+      <div class="guarantee" id="guarantee"></div>
+      <details style="margin-top:12px"><summary>Accepted code</summary><pre id="finalCode"></pre></details>
+    </div>
+  </section>
+</main>
+<div class="drawer" id="drawer" role="dialog" aria-label="Candidate">
+  <button class="close" id="closeDrawer">Close</button>
+  <h3 id="dTitle" style="margin-top:0"></h3>
+  <div id="dMeta" class="policy-meta"></div>
+  <pre id="dCode" style="margin-top:10px"></pre>
+</div>
+<script>
+const MODELS = { t1: "Qwen 1.5B", t2: "Qwen 7B", t3: "Qwen 14B", t4: "Qwen 32B",
+  d1: "DeepSeek 1.3B", d2: "DeepSeek 6.7B", d3: "DeepSeek 33B", api: "gpt-oss 120B" };
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+let policies = [], current = null, tasks = [], chosen = null, cands = {}, runState = {};
+
+async function getJSON(url) { const r = await fetch(url); return r.json(); }
+
+async function loadPolicies() {
+  policies = await getJSON("/api/policies");
+  $("policy").innerHTML = policies.map((p, i) =>
+    `<option value="${i}">${esc(p.id)} (α = ${p.alpha})</option>`).join("");
+  if (policies.length) selectPolicy(0); else $("policyMeta").textContent = "No policies found: run codeladder export-policy first.";
+}
+
+function selectPolicy(i) {
+  current = policies[i];
+  $("policyTiers").innerHTML = current.tiers.map((t, k) => {
+    const th = current.thresholds[k];
+    return `<span class="tierchip ${th === null ? "off" : ""}">${esc(MODELS[t] || t)}${th === null ? "" : ` · λ ${th}`}</span>`;
+  }).join("");
+  const c = current.calibration || {};
+  $("policyMeta").innerHTML = `Certified on <b>${current.calibration_tasks}</b> tasks: accepted-but-wrong at most <b>${current.alpha}</b> with probability ${1 - current.delta}. On those tasks it answered <b>${pct(c.coverage)}</b> and solved <b>${pct(c.solved)}</b>.`;
+  $("bench").innerHTML = (current.benchmarks.length ? current.benchmarks : ["humaneval"]).map((b) => `<option>${b}</option>`).join("");
+  loadTasks();
+}
+const pct = (x) => x == null ? "n/a" : (100 * x).toFixed(1) + "%";
+
+async function loadTasks() {
+  tasks = await getJSON(`/api/tasks?benchmark=${$("bench").value}&tiers=${current.tiers.join(",")}`);
+  renderTasks();
+}
+function renderTasks() {
+  const q = $("search").value.toLowerCase();
+  const shown = tasks.filter((t) => t.id.toLowerCase().includes(q)).slice(0, 300);
+  $("tasks").innerHTML = shown.map((t) =>
+    `<li data-id="${esc(t.id)}" class="${t.replay ? "" : "noreplay"}" aria-selected="${chosen === t.id}">
+      <span>${esc(t.id)}</span>${t.difficulty ? `<span class="badge ${esc(t.difficulty)}">${esc(t.difficulty)}</span>` : ""}</li>`).join("")
+    || `<li class="noreplay">No tasks in the bundle for this benchmark.</li>`;
+}
+$("tasks").addEventListener("click", async (e) => {
+  const li = e.target.closest("li[data-id]"); if (!li) return;
+  chosen = li.dataset.id; renderTasks();
+  const t = await getJSON(`/api/task?benchmark=${$("bench").value}&id=${encodeURIComponent(chosen)}`);
+  $("problemTitle").textContent = chosen; $("problemText").textContent = t.prompt; $("problemText").classList.remove("empty");
+});
+$("search").addEventListener("input", renderTasks);
+$("bench").addEventListener("change", () => { chosen = null; loadTasks(); });
+$("policy").addEventListener("change", (e) => selectPolicy(+e.target.value));
+for (const [tab, pane, other, otherPane] of [["tabBench", "paneBench", "tabOwn", "paneOwn"], ["tabOwn", "paneOwn", "tabBench", "paneBench"]]) {
+  $(tab).addEventListener("click", () => {
+    $(tab).setAttribute("aria-selected", "true"); $(other).setAttribute("aria-selected", "false");
+    $(pane).hidden = false; $(otherPane).hidden = true;
+    if (tab === "tabOwn") document.querySelector('input[value=live]').checked = true;
+  });
+}
+
+function say(text) {
+  const li = document.createElement("li");
+  li.innerHTML = `<span class="t">${String($("narr").children.length + 1).padStart(2, "0")}</span>${text}`;
+  $("narr").appendChild(li); li.scrollIntoView({ block: "nearest" });
+}
+const name = (t) => esc(MODELS[t] || t);
+
+function buildLadder(ev) {
+  runState = { tiers: ev.tiers, thresholds: ev.thresholds, score: ev.score };
+  $("ladder").innerHTML = ev.tiers.map((t, k) => {
+    const th = ev.thresholds[k];
+    return `<div class="lane ${th === null ? "skipped" : ""}" id="lane${k}">
+      <div><div class="lane-name">${name(t)}</div><div class="lane-sub">${th === null ? "not in this ladder" : `threshold λ = ${th}`}</div>
+      <div class="lane-status" id="status${k}"></div></div>
+      <div class="cands" id="cands${k}"></div></div>`;
+  }).join("");
+}
+
+function scoreText(i, ev) {
+  const id = ev.ids[i], c = cands[id] || {}, a = ev.agreement[i];
+  if (runState.score === "agreement_selfconf" && c.self_conf != null) return `agreement ${a.toFixed(2)} × confidence ${(+c.self_conf).toFixed(2)} = ${ev.scores[i].toFixed(2)}`;
+  if (runState.score === "agreement_ptrue" && c.p_true != null) return `agreement ${a.toFixed(2)} × P(correct) ${(+c.p_true).toFixed(2)} = ${ev.scores[i].toFixed(2)}`;
+  return `score ${ev.scores[i].toFixed(2)}`;
+}
+
+function handle(ev) {
+  const k = ev.tier;
+  switch (ev.type) {
+    case "start": buildLadder(ev); $("narr").innerHTML = ""; $("resultCard").hidden = true; cands = {};
+      say(`Policy <b>${esc(ev.setting)}</b>, certified at α = ${ev.alpha} (${ev.mode} mode).`); break;
+    case "problem": $("problemTitle").textContent = ev.id; $("problemText").textContent = ev.prompt; $("problemText").classList.remove("empty"); break;
+    case "tier": document.querySelectorAll(".lane").forEach((l) => l.classList.remove("active"));
+      $("lane" + k).classList.add("active");
+      say(`<b>${name(ev.tier_name)}</b>: accept a candidate only if it passes the checks and scores at least ${ev.threshold}; up to ${ev.max_draws} draws.`); break;
+    case "draw": {
+      const c = ev.cand; cands[c.id] = c;
+      const el = document.createElement("div");
+      el.className = "cand" + (c.checks_ok ? "" : " fail"); el.id = "c_" + c.id.replace(/[^a-zA-Z0-9]/g, "_");
+      el.innerHTML = `<div><b>${c.kind === "repair" ? "repair" : "sample"} ${c.sample}${c.depth ? "." + c.depth : ""}</b></div>
+        <div class="k">${c.checks_ok ? "passes checks" + (c.cluster ? " · " + c.cluster : "") : "fails tests"}</div>
+        <div class="bar"><i style="width:0%"></i><b style="left:${100 * (runState.thresholds[k] ?? 0)}%"></b></div>`;
+      el.addEventListener("click", () => openCand(c));
+      $("cands" + k).appendChild(el);
+      say(`${name(ev.tier_name)} wrote ${c.kind === "repair" ? "a repair of sample " + c.sample : "sample " + c.sample}: ${c.checks_ok ? `passes the visible tests (behaviour group ${c.cluster || "n/a"})` : esc(c.feedback || c.error)}.`);
+      break; }
+    case "scores": {
+      ev.ids.forEach((id, i) => {
+        const el = $("c_" + id.replace(/[^a-zA-Z0-9]/g, "_")); if (!el) return;
+        el.querySelector(".bar i").style.width = (100 * Math.min(1, ev.scores[i])) + "%";
+        el.classList.toggle("best", i === ev.best);
+      });
+      const i = ev.best;
+      say(`Best candidate: ${scoreText(i, ev)} ${ev.scores[i] >= ev.threshold ? "≥" : "<"} threshold ${ev.threshold}.`); break; }
+    case "resample": say(`Not enough evidence yet: draw another sample from ${name(ev.tier_name)}.`); break;
+    case "repair": say(`Ask ${name(ev.tier_name)} to repair its most promising failing candidate, showing it the failed test.`); break;
+    case "accept": {
+      const el = $("c_" + ev.cand.replace(/[^a-zA-Z0-9]/g, "_")); if (el) el.classList.add("accepted");
+      $("status" + k).textContent = "accepted here"; say(`<b>Accept</b> at ${name(ev.tier_name)}.`); break; }
+    case "escalate": $("status" + k).textContent = "escalated"; say(`No candidate reached the certified threshold: <b>escalate</b> to the next model.`); break;
+    case "abstain": say(`No rung could certify an answer: <b>abstain</b> (say "I don't know" rather than risk wrong code).`); break;
+    case "result": showResult(ev); break;
+    case "error": say(`<span class="err">${esc(ev.message)}</span>`); break;
+  }
+}
+
+function showResult(ev) {
+  $("resultCard").hidden = false;
+  const hidden = ev.hidden_pass === true ? `<span class="pill ok">passes all hidden tests</span>`
+    : ev.hidden_pass === false ? `<span class="pill bad">fails a hidden test</span>` : `<span class="pill na">hidden tests not run</span>`;
+  $("verdict").innerHTML = ev.accepted
+    ? `<div><div class="big ok">Answered by ${name(ev.tier)}</div><div style="margin-top:6px">${hidden} <span class="lane-sub">(ground truth, never seen by the ladder)</span></div></div>`
+    : `<div class="big abs">Abstained</div>`;
+  $("verdict").innerHTML += `<div class="stat"><div class="v">${ev.drawn}</div><div class="l">candidates drawn</div></div>
+    <div class="stat"><div class="v">${ev.tokens.toLocaleString()}</div><div class="l">tokens</div></div>
+    <div class="stat"><div class="v">${ev.cost.toLocaleString()}</div><div class="l">cost (weighted tokens × model size in B)</div></div>
+    <div class="stat"><div class="v">${ev.calibration ? Math.round(ev.calibration.mean_cost).toLocaleString() : "n/a"}</div><div class="l">policy's mean cost per task</div></div>`;
+  $("guarantee").textContent = ev.guarantee || "";
+  $("finalCode").textContent = ev.code || "(no code: the ladder abstained)";
+}
+
+function openCand(c) {
+  $("dTitle").textContent = `${MODELS[c.tier] || c.tier}: ${c.kind} ${c.sample}${c.depth ? "." + c.depth : ""}`;
+  $("dMeta").innerHTML = [c.checks_ok ? "passes the visible tests" + (c.cluster ? `, behaviour group ${c.cluster}` : "") : esc(c.feedback || c.error),
+    c.self_conf != null ? `self-rated confidence ${(+c.self_conf).toFixed(2)}` : "", c.p_true != null ? `P(correct) ${(+c.p_true).toFixed(2)}` : "",
+    `${c.tokens} tokens`].filter(Boolean).join(" · ");
+  $("dCode").textContent = c.code; $("drawer").classList.add("open");
+}
+$("closeDrawer").addEventListener("click", () => $("drawer").classList.remove("open"));
+
+$("run").addEventListener("click", async () => {
+  const own = $("tabOwn").getAttribute("aria-selected") === "true";
+  const mode = document.querySelector("input[name=mode]:checked").value;
+  const body = { policy: current.id, mode, perm: +$("perm").value };
+  if (own) {
+    let tests; try { tests = JSON.parse($("ownTests").value); } catch { alert("Tests must be valid JSON."); return; }
+    body.problem = { prompt: $("ownPrompt").value, entry_point: $("ownEntry").value.trim(), tests };
+    body.mode = "live";
+  } else {
+    if (!chosen) { alert("Pick a task first."); return; }
+    body.benchmark = $("bench").value; body.task_id = chosen;
+  }
+  $("run").disabled = true; $("run").textContent = mode === "live" ? "Asking the models…" : "Replaying…";
+  const pace = +$("speed").value;
+  try {
+    const r = await fetch("/api/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const reader = r.body.getReader(), dec = new TextDecoder(); let buf = "";
+    for (;;) {
+      const { value, done } = await reader.read(); if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl); buf = buf.slice(nl + 1);
+        if (!line.trim()) continue;
+        const ev = JSON.parse(line); handle(ev);
+        if (pace && ["draw", "scores", "accept", "escalate", "resample", "repair"].includes(ev.type)) await new Promise((res) => setTimeout(res, pace));
+      }
+    }
+  } catch (e) { say(`<span class="err">${esc(e)}</span>`); }
+  $("run").disabled = false; $("run").textContent = "Run the ladder";
+});
+loadPolicies();
+</script>
+</body>
+</html>
