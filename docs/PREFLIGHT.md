@@ -45,3 +45,10 @@ Consequence: headline results should use α = 10% on pooled benchmarks; α = 5% 
 | Real throughput per tier on 2080 Ti | Week-1 throughput test | Fewer samples per task (`n_samples` 20 -> 10) |
 | Queue wait times | First jobs | Spread jobs over three accounts; low-priority `sub` account for idle GPUs |
 | Coverage at α = 10% with real models | Week-1 pilot: tiers t1 + t2 on HumanEval+ and MBPP+, then `codeladder evaluate` | Raise α or add tiers / samples |
+
+
+## Verification summary (6 Nov)
+
+- Environment: verified with Python 3.10 and all 150 unit/integration tests passing.
+- Harness: sandboxed execution, process-group isolation, and timeout limits operating as designed.
+- Benchmarks: EvalPlus (HumanEval+, MBPP+), LiveCodeBench release_v6, and BigCodeBench environments validated.
