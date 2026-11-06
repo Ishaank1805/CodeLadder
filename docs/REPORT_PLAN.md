@@ -4,6 +4,8 @@ Outlines for the mid-submission report (6 Nov, 4 pages) and the final project re
 
 ## Mid-submission (6 Nov, 4 pages)
 
+*Status (6 Nov):* Prepared and verified. Full test suite passes (150 tests), report figures and tables generated in `results/`, interactive demo and offline replay ready.
+
 What the proposal promised for this point: the generation pass, the sandboxed executor, the scorer, a first calibrated cascade, and preliminary results for H1 and H2. We are well past that, so the report can state outcomes for all four hypotheses and list the extensions as work in progress. Use the ACM `sigconf` template from the start so the final project report reuses the text.
 
 | Section | Length | Content | Evidence |

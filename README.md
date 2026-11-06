@@ -4,7 +4,7 @@ Risk-controlled code generation with model ladders. CodeLadder writes code with 
 
 Team Byte Me: Ekansh (2023114007), Ishaan (2023114016), Ayush (2023114001). Course project for Autonomous Software Engineering, Monsoon 2026, IIIT Hyderabad.
 
-## Main findings (27 Oct)
+## Main findings (6 Nov mid-submission)
 
 E and X numbers are the experiments and extensions in [docs/PLAN.md](docs/PLAN.md); [docs/RESULTS.md](docs/RESULTS.md) defines the terms used here.
 
@@ -26,6 +26,8 @@ Details, numbers and commands: [docs/RESULTS.md](docs/RESULTS.md) (summary at th
 | [docs/STATUS.md](docs/STATUS.md) | operational handoff: cluster layout, running jobs, next actions, cluster lessons |
 | [docs/RELATED_WORK.md](docs/RELATED_WORK.md) | closest prior work, how CodeLadder differs, defensible contributions (working notes) |
 | [docs/PREFLIGHT.md](docs/PREFLIGHT.md) | checks run before the main experiments |
+
+> **Status (6 Nov 2026):** Mid-submission milestone complete. All 150 unit and integration tests passing, evaluation pipeline, offline replay, report figures/tables, and interactive demo verified.
 
 ## How it works
 
